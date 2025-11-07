@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 from flask import Flask, render_template_string, request, redirect, url_for, flash
 from spotipy.oauth2 import SpotifyOAuth
+from datetime import datetime, timedelta
+from collections import Counter
 import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading
 
 app = Flask(__name__)
 app.secret_key = 'hud-launcher-secret-key'
+
 CONFIG_PATH = "config.toml"
 DEFAULT_CONFIG = {
     "fonts": {
@@ -47,6 +50,7 @@ DEFAULT_CONFIG = {
 
 hud35_process = None
 neonwifi_process = None
+last_logged_song = None
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
@@ -203,12 +207,41 @@ def is_neonwifi_running():
     except Exception:
         return False
 
+def parse_song_from_log(log_line):
+    if '🎵 Now playing:' in log_line:
+        try:
+            song_part = log_line.split('🎵 Now playing: ')[1].strip()
+            if ' -- ' in song_part:
+                artist_part, song = song_part.split(' -- ', 1)
+            elif ' - ' in song_part:
+                artist_part, song = song_part.split(' - ', 1)
+            elif ': ' in song_part:
+                artist_part, song = song_part.split(': ', 1)
+            else:
+                artist_part = 'Unknown Artist'
+                song = song_part
+            artists = [artist.strip() for artist in artist_part.split(',')]
+            return {
+                'song': song.strip(),
+                'artist': artist_part.strip(),
+                'artists': artists,
+                'full_track': song_part.strip()
+            }
+        except Exception as e:
+            logger = logging.getLogger('Launcher')
+            logger.error(f"Error parsing song from log: {e}")
+            return None
+    return None
+
 def start_hud35():
-    global hud35_process
+    global hud35_process, last_logged_song
     logger = logging.getLogger('Launcher')
     if is_hud35_running():
         return False, "HUD35 is already running"
     try:
+        last_logged_song = get_last_logged_song()
+        if last_logged_song:
+            logger.info(f"📝 Last logged song: {last_logged_song}")
         hud35_process = subprocess.Popen(
             [sys.executable, 'hud35.py'],
             stdout=subprocess.PIPE,
@@ -221,6 +254,9 @@ def start_hud35():
             for line in iter(hud35_process.stdout.readline, ''):
                 if line.strip():
                     logger.info(f"[HUD35] {line.strip()}")
+                    song_info = parse_song_from_log(line)
+                    if song_info:
+                        log_song_play(song_info)
         output_thread = threading.Thread(target=log_hud35_output)
         output_thread.daemon = True
         output_thread.start()
@@ -234,7 +270,7 @@ def start_hud35():
         return False, f"Error starting HUD35: {str(e)}"
 
 def stop_hud35():
-    global hud35_process
+    global hud35_process, last_logged_song
     logger = logging.getLogger('Launcher')
     if not is_hud35_running():
         return False, "HUD35 is not running"
@@ -247,6 +283,7 @@ def stop_hud35():
             hud35_process.kill()
             hud35_process.wait()
         hud35_process = None
+        last_logged_song = None
         logger.info("HUD35 stopped successfully")
         return True, "HUD35 stopped successfully"
     except Exception as e:
@@ -626,6 +663,11 @@ SETUP_HTML = """
                 {% endif %}
             </div>
         </div>
+        <div class="log-viewer-controls">
+            <a href="/music_stats">
+                <button type="button" class="btn-secondary">📊 Music Statistics</button>
+            </a>
+        </div>
         <form method="POST" action="/save_all_config">
             <div class="section">
                 <h2>🔑 API Configuration</h2>
@@ -765,6 +807,390 @@ SETUP_HTML = """
 </body>
 </html>
 """
+MUSIC_STATS_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Music Statistics</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3d3d3d;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent-color: #007bff;
+            --accent-hover: #0056b3;
+            --border-color: #444444;
+            --card-bg: #2d2d2d;
+        }
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-tertiary: #e9ecef;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --accent-color: #007bff;
+            --accent-hover: #0056b3;
+            --border-color: #dee2e6;
+            --card-bg: #f8f9fa;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+        .stat-label {
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+        .charts-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+        .chart-card {
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-title {
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+            color: var(--text-primary);
+            flex-shrink: 0;
+        }
+        .chart-container {
+            height: 400px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .bar-chart {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 5px;
+        }
+        .bar-item {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            border-left: 4px solid var(--accent-color);
+        }
+        .song-name {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            line-height: 1.3;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .artist-name {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-bottom: 6px;
+            line-height: 1.2;
+        }
+        .bar-track-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .bar-track {
+            flex: 1;
+            height: 16px;
+            background: var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.3s ease;
+        }
+        .bar-count {
+            flex: 0 0 40px;
+            text-align: right;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+        .artist-bar-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            border-left: 4px solid var(--accent-color);
+        }
+        .artist-name-full {
+            flex: 0 0 200px;
+            font-size: 13px;
+            font-weight: bold;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .artist-bar-track {
+            flex: 1;
+            height: 16px;
+            background: var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+        .artist-bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 0.3s ease;
+        }
+        .artist-bar-count {
+            flex: 0 0 40px;
+            text-align: right;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        input, button, select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+        button {
+            background: var(--accent-color);
+            border: none;
+            cursor: pointer;
+            color: white;
+        }
+        button:hover {
+            background: var(--accent-hover);
+        }
+        .theme-toggle {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .theme-toggle:hover {
+            background: var(--accent-hover);
+        }
+        /* Custom scrollbar */
+        .bar-chart::-webkit-scrollbar {
+            width: 8px;
+        }
+        .bar-chart::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        .bar-chart::-webkit-scrollbar-thumb {
+            background: var(--accent-color);
+            border-radius: 4px;
+        }
+        .bar-chart::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-hover);
+        }
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            .artist-name-full {
+                flex: 0 0 150px;
+            }
+            .chart-container {
+                min-height: 250px;
+                max-height: 350px;
+            }
+        }
+    </style>
+</head>
+<body data-theme="{{ ui_config.theme }}">
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Music Statistics</h1>
+            <div class="controls">
+                <form method="GET" style="display: flex; gap: 10px; align-items: center;">
+                    <label>Time Period:</label>
+                    <select name="period" onchange="this.form.submit()">
+                        <option value="1day" {% if period == '1day' %}selected{% endif %}>Last 24 Hours</option>
+                        <option value="7days" {% if period == '7days' %}selected{% endif %}>Last 7 Days</option>
+                        <option value="30days" {% if period == '30days' %}selected{% endif %}>Last 30 Days</option>
+                        <option value="90days" {% if period == '90days' %}selected{% endif %}>Last 90 Days</option>
+                        <option value="all" {% if period == 'all' %}selected{% endif %}>All Time</option>
+                    </select>
+                    <label>Max Items:</label>
+                    <input type="number" name="lines" value="{{ lines }}" min="10" max="1000" style="width: 80px;" onchange="this.form.submit()">
+                </form>
+                <button onclick="location.href='/'">← Back to Launcher</button>
+                <button onclick="clearSongLogs()">🗑️ Clear Song Logs</button>
+                <button class="theme-toggle" onclick="toggleTheme()">
+                    {{ '☀️' if ui_config.theme == 'dark' else '🌙' }}
+                </button>
+            </div>
+        </div>
+
+        <div class="stats-cards">
+            <div class="stat-card">
+                <div class="stat-number">{{ total_plays }}</div>
+                <div class="stat-label">Total Plays</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ unique_songs }}</div>
+                <div class="stat-label">Unique Songs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ unique_artists }}</div>
+                <div class="stat-label">Unique Artists</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <!-- Most Played Songs Section -->
+            <div class="chart-card">
+                <h2 class="chart-title">🎼 Most Played Songs</h2>
+                <div class="chart-container">
+                    <div class="bar-chart" id="songChart">
+                        {% for label, count, color in song_chart_items %}
+                        <div class="bar-item">
+                            <div class="song-name" title="{{ label }}">{{ loop.index }}. {{ label.split(' - ')[0] if ' - ' in label else label }}</div>
+                            <div class="artist-name" title="{{ label.split(' - ')[1] if ' - ' in label else 'Unknown Artist' }}">
+                                {{ label.split(' - ')[1] if ' - ' in label else 'Unknown Artist' }}
+                            </div>
+                            <div class="bar-track-container">
+                                <div class="bar-track">
+                                    <div class="bar-fill" style="width: {{ (count / song_chart_items[0][1] * 100) if song_chart_items else 0 }}%; background: {{ color }};"></div>
+                                </div>
+                                <div class="bar-count">{{ count }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Most Played Artists Section -->
+            <div class="chart-card">
+                <h2 class="chart-title">🎤 Most Played Artists</h2>
+                <div class="chart-container">
+                    <div class="bar-chart" id="artistChart">
+                        {% for label, count, color in artist_chart_items %}
+                        <div class="artist-bar-item">
+                            <div class="artist-name-full" title="{{ label }}">{{ loop.index }}. {{ label }}</div>
+                            <div class="artist-bar-track">
+                                <div class="artist-bar-fill" style="width: {{ (count / artist_chart_items[0][1] * 100) if artist_chart_items else 0 }}%; background: {{ color }};"></div>
+                            </div>
+                            <div class="artist-bar-count">{{ count }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/toggle_theme';
+            const themeInput = document.createElement('input');
+            themeInput.type = 'hidden';
+            themeInput.name = 'theme';
+            themeInput.value = newTheme;
+            form.appendChild(themeInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function clearSongLogs() {
+            if (confirm('Are you sure you want to clear all song history? This cannot be undone.')) {
+                fetch('/clear_song_logs', { method: 'POST' })
+                    .then(() => {
+                        location.reload();
+                    });
+            }
+        }
+
+        // Animate bar fills on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const bars = document.querySelectorAll('.bar-fill, .artist-bar-fill');
+            bars.forEach(bar => {
+                const width = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = width;
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>
+"""
+
+@app.context_processor
+def utility_processor():
+    return dict(zip=zip)
 
 @app.route('/')
 def index():
@@ -931,16 +1357,12 @@ def process_callback_url():
 def view_logs():
     lines = request.args.get('lines', 100, type=int)
     live = request.args.get('live', False, type=bool)
-    
-    # Load config to get theme
     config = load_config()
     ui_config = config.get("ui", {"theme": "dark"})
     current_theme = ui_config.get("theme", "dark")
-    
     log_file = 'hud35.log'
     if not os.path.exists(log_file):
         return "No log file found", 404
-    
     try:
         with open(log_file, 'r') as f:
             all_lines = f.readlines()
@@ -948,12 +1370,8 @@ def view_logs():
             log_content = ''.join(recent_lines)
     except Exception as e:
         log_content = f"Error reading log file: {str(e)}"
-    
     if live:
-        # Return plain text for live updates
         return log_content
-    
-    # Return HTML page for initial view with theme support
     return f"""
     <!DOCTYPE html>
     <html>
@@ -1083,19 +1501,15 @@ def view_logs():
 {log_content}
             </div>
         </div>
-        
         <script>
             let liveUpdate = false;
             let updateInterval;
             let currentTheme = '{current_theme}';
-            
             function toggleTheme() {{
                 currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
                 document.body.setAttribute('data-theme', currentTheme);
                 const btn = document.getElementById('themeBtn');
                 btn.innerHTML = currentTheme === 'dark' ? '☀️' : '🌙';
-                
-                // Save theme preference
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.action = '/toggle_theme';
@@ -1107,11 +1521,9 @@ def view_logs():
                 document.body.appendChild(form);
                 form.submit();
             }}
-            
             function toggleLive() {{
                 liveUpdate = !liveUpdate;
                 const btn = document.getElementById('liveBtn');
-                
                 if (liveUpdate) {{
                     btn.innerHTML = '⏸️ Stop Live';
                     startLiveUpdates();
@@ -1120,7 +1532,6 @@ def view_logs():
                     stopLiveUpdates();
                 }}
             }}
-            
             function startLiveUpdates() {{
                 const lines = document.getElementById('lines').value;
                 updateInterval = setInterval(() => {{
@@ -1133,18 +1544,15 @@ def view_logs():
                         }});
                 }}, 2000);
             }}
-            
             function stopLiveUpdates() {{
                 if (updateInterval) {{
                     clearInterval(updateInterval);
                 }}
             }}
-            
             function scrollToBottom() {{
                 const logContainer = document.getElementById('logContent');
                 logContainer.scrollTop = logContainer.scrollHeight;
             }}
-            
             function clearLogs() {{
                 if (confirm('Are you sure you want to clear the logs?')) {{
                     fetch('/clear_logs', {{ method: 'POST' }})
@@ -1154,13 +1562,10 @@ def view_logs():
                         }});
                 }}
             }}
-            
-            // Color code log lines
             function colorCodeLogs() {{
                 const container = document.getElementById('logContent');
                 const lines = container.innerText.split('\\n');
                 let coloredHTML = '';
-                
                 lines.forEach(line => {{
                     let cssClass = 'log-line';
                     if (line.includes('ERROR') || line.includes('❌') || line.toLowerCase().includes('error')) {{
@@ -1176,15 +1581,10 @@ def view_logs():
                     }}
                     coloredHTML += `<div class="${{cssClass}}">${{line}}</div>`;
                 }});
-                
                 container.innerHTML = coloredHTML;
             }}
-            
-            // Initial color coding
             colorCodeLogs();
             scrollToBottom();
-            
-            // Handle form submission to preserve theme
             document.getElementById('linesForm').addEventListener('submit', function(e) {{
                 const input = document.createElement('input');
                 input.type = 'hidden';
@@ -1206,6 +1606,172 @@ def clear_logs():
         return 'Logs cleared', 200
     except Exception as e:
         return f'Error clearing logs: {str(e)}', 500
+
+@app.route('/music_stats')
+def music_stats():
+    """Display music statistics with charts"""
+    # Load config for theme
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
+    current_theme = ui_config.get("theme", "dark")
+    
+    # Get time period from request
+    period = request.args.get('period', '7days')
+    try:
+        lines = int(request.args.get('lines', 1000))
+    except:
+        lines = 1000
+    
+    # Load and filter song data
+    songs_data = load_song_data(period)
+    
+    # Generate statistics
+    song_stats, artist_stats = generate_music_stats(songs_data)
+    
+    # Create chart data and pre-zip for template
+    song_chart_data = generate_chart_data(song_stats, 'Songs')
+    artist_chart_data = generate_chart_data(artist_stats, 'Artists')
+    
+    # Pre-zip the data for the template
+    song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
+    artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
+    
+    return render_template_string(MUSIC_STATS_HTML, 
+                                song_chart_items=song_chart_items,
+                                artist_chart_items=artist_chart_items,
+                                period=period,
+                                lines=lines,
+                                total_plays=len(songs_data),
+                                unique_songs=len(song_stats),
+                                unique_artists=len(artist_stats),
+                                ui_config=ui_config)
+
+@app.route('/clear_song_logs', methods=['POST'])
+def clear_song_logs():
+    try:
+        with open('songs.toml', 'w') as f:
+            f.write('# Song play history\n')
+            f.write('# Generated by HUD35 Launcher\n\n')
+        return 'Song logs cleared', 200
+    except Exception as e:
+        return f'Error clearing song logs: {str(e)}', 500
+
+def get_last_logged_song():
+    if not os.path.exists('songs.toml'):
+        return None
+    try:
+        with open('songs.toml', 'r') as f:
+            content = f.read()
+        data = toml.loads(content)
+        plays = data.get('play', [])
+        if not plays:
+            return None
+        last_play = plays[-1]
+        return last_play.get('full_track')
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error reading last logged song: {e}")
+        return None
+
+def log_song_play(song_info):
+    global last_logged_song
+    current_song = song_info.get('full_track', '').strip()
+    if last_logged_song and current_song == last_logged_song:
+        logger = logging.getLogger('Launcher')
+        logger.info(f"⏭️ Skipping duplicate song: {current_song}")
+        return
+    try:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        song = song_info.get('song', '').replace('"', '\\"')
+        artist = song_info.get('artist', '').replace('"', '\\"')
+        full_track = song_info.get('full_track', '').replace('"', '\\"')
+        artists = song_info.get('artists', [artist])
+        with open('songs.toml', 'a') as f:
+            f.write("[[play]]\n")
+            f.write(f"timestamp = \"{timestamp}\"\n")
+            f.write(f"song = \"{song}\"\n")
+            f.write(f"artist = \"{artist}\"\n")
+            f.write(f"full_track = \"{full_track}\"\n")
+            f.write(f"artists = {artists}\n")
+            f.write("\n")
+        last_logged_song = current_song
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error logging song play: {e}")
+
+def load_song_data(period='7days'):
+    if not os.path.exists('songs.toml'):
+        return []
+    now = datetime.now()
+    if period == '1day':
+        threshold = now - timedelta(days=1)
+    elif period == '7days':
+        threshold = now - timedelta(days=7)
+    elif period == '30days':
+        threshold = now - timedelta(days=30)
+    elif period == '90days':
+        threshold = now - timedelta(days=90)
+    elif period == 'all':
+        threshold = datetime.min
+    else:
+        threshold = now - timedelta(days=7)
+    songs_data = []
+    try:
+        with open('songs.toml', 'r') as f:
+            content = f.read()
+        data = toml.loads(content)
+        plays = data.get('play', [])
+        for play in plays:
+            try:
+                entry_time = datetime.strptime(play['timestamp'], '%Y-%m-%d %H:%M:%S')
+                if entry_time >= threshold:
+                    songs_data.append(play)
+            except (KeyError, ValueError):
+                continue
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error loading song data: {e}")
+    return songs_data
+
+def generate_music_stats(songs_data):
+    song_counter = Counter()
+    artist_counter = Counter()
+    for entry in songs_data:
+        song = entry.get('song', 'Unknown Song')
+        artist = entry.get('artist', 'Unknown Artist')
+        song_with_artist = f"{song} - {artist}"
+        song_counter[song_with_artist] += 1
+        artists = entry.get('artists', [])
+        if isinstance(artists, str):
+            try:
+                artists_clean = artists.strip('[]').replace("'", "").replace('"', '')
+                artists_list = [a.strip() for a in artists_clean.split(',')] if artists_clean else []
+            except:
+                artists_list = [artists]
+        else:
+            artists_list = artists
+        for artist_name in artists_list:
+            if artist_name and artist_name != 'Unknown Artist':
+                artist_counter[artist_name] += 1
+    top_songs = dict(song_counter.most_common(20))
+    top_artists = dict(artist_counter.most_common(20))
+    return top_songs, top_artists
+
+def generate_chart_data(stats, label_type):
+    if not stats:
+        return {'labels': [], 'data': [], 'colors': []}
+    labels = list(stats.keys())
+    data = list(stats.values())
+    colors = []
+    for i in range(len(labels)):
+        hue = (i * 137.5) % 360
+        colors.append(f'hsl({hue}, 70%, 60%)')
+    return {
+        'labels': labels,
+        'data': data,
+        'colors': colors,
+        'label_type': label_type
+    }
 
 def cleanup():
     logger = logging.getLogger('Launcher')

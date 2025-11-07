@@ -855,7 +855,7 @@ def spotify_loop():
                 last_track_id = current_id
                 if START_SCREEN == "spotify":
                     update_display()
-                    print(f"🎵 Now playing: {new_track['title']} by {new_track['artists']}")
+                    print(f"🎵 Now playing: {new_track['artists']} -- {new_track['title']}")
             else:
                 spotify_track['current_position'] = track.get('progress_ms', 0) // 1000
                 spotify_track['is_playing'] = track.get('is_playing', False)
