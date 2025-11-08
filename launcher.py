@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from flask import Flask, render_template_string, request, redirect, url_for, flash
+from flask import Flask, render_template_string, request, redirect, url_for, flash, Response
 from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime, timedelta
 from collections import Counter
-import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading
+import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json
 
 app = Flask(__name__)
 app.secret_key = 'hud-launcher-secret-key'
@@ -41,7 +41,8 @@ DEFAULT_CONFIG = {
         "fallback_city": "",
         "use_gpsd": True,
         "use_google_geo": True,
-        "time_display": True
+        "time_display": True,
+        "enable_current_track_display": True
     },
     "auto_start": {
         "auto_start_hud35": True,
@@ -674,6 +675,11 @@ SETUP_HTML = """
             </a>
         </div>
         <form method="POST" action="/save_all_config">
+            <div class="toggle-switch">
+                <input type="checkbox" id="enable_current_track_display" name="enable_current_track_display" {% if config.settings.enable_current_track_display %}checked{% endif %}>
+                <label for="enable_current_track_display">Enable current track display</label>
+                <small style="display: block; margin-left: 25px; color: var(--text-secondary);">(Shows current track on display and updates the current track file for the web UI)</small>
+            </div>
             <div class="section">
                 <h2>🔑 API Configuration</h2>
                 <div class="instructions">
@@ -775,7 +781,7 @@ SETUP_HTML = """
                         <div class="form-group">
                             <label for="framebuffer_device">Framebuffer Device:</label>
                             <input type="text" id="framebuffer" name="framebuffer" value="{{ config.settings.framebuffer }}" placeholder="e.g., /dev/fb1">
-                            <small>Path to framebuffer device (e.g., /dev/fb0, /dev/fb1)</small>
+                            <small>Path to framebuffer device (e.g. /dev/fb0, /dev/fb1)</small>
                         </div>
                     </div>
                 </div>
@@ -833,6 +839,7 @@ SETUP_HTML = """
 </body>
 </html>
 """
+
 MUSIC_STATS_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1112,7 +1119,6 @@ MUSIC_STATS_HTML = """
                 </button>
             </div>
         </div>
-
         <div class="stats-cards">
             <div class="stat-card">
                 <div class="stat-number">{{ total_plays }}</div>
@@ -1127,9 +1133,17 @@ MUSIC_STATS_HTML = """
                 <div class="stat-label">Unique Artists</div>
             </div>
         </div>
-
+        {% if enable_current_track_display %}
+        <div class="section" style="margin-bottom: 20px;">
+            <h2>🎵 Currently Playing</h2>
+            <div id="currentTrackContainer">
+                <div style="padding: 20px; text-align: center; background: var(--card-bg); border-radius: 8px; color: var(--text-secondary);">
+                    Loading current track...
+                </div>
+            </div>
+        </div>
+        {% endif %}
         <div class="charts-container">
-            <!-- Most Played Songs Section -->
             <div class="chart-card">
                 <h2 class="chart-title">🎼 Most Played Songs</h2>
                 <div class="chart-container">
@@ -1151,8 +1165,6 @@ MUSIC_STATS_HTML = """
                     </div>
                 </div>
             </div>
-
-            <!-- Most Played Artists Section -->
             <div class="chart-card">
                 <h2 class="chart-title">🎤 Most Played Artists</h2>
                 <div class="chart-container">
@@ -1171,12 +1183,10 @@ MUSIC_STATS_HTML = """
             </div>
         </div>
     </div>
-
     <script>
         function toggleTheme() {
             const currentTheme = document.body.getAttribute('data-theme');
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/toggle_theme';
@@ -1188,7 +1198,6 @@ MUSIC_STATS_HTML = """
             document.body.appendChild(form);
             form.submit();
         }
-
         function clearSongLogs() {
             if (confirm('Are you sure you want to clear all song history? This cannot be undone.')) {
                 fetch('/clear_song_logs', { method: 'POST' })
@@ -1197,8 +1206,46 @@ MUSIC_STATS_HTML = """
                     });
             }
         }
-
-        // Animate bar fills on load
+        function setupCurrentTrackSSE() {
+            const eventSource = new EventSource('/stream/current_track');
+            eventSource.onmessage = function(event) {
+                const trackData = JSON.parse(event.data);
+                updateCurrentTrackDisplay(trackData);
+            };
+            eventSource.onerror = function(event) {
+                console.error('SSE error:', event);
+                setTimeout(setupCurrentTrackSSE, 5000);
+            };
+            return eventSource;
+        }
+        function updateCurrentTrackDisplay(trackData) {
+            const container = document.getElementById('currentTrackContainer');
+            if (trackData.has_track) {
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 20px; padding: 15px; background: var(--card-bg); border-radius: 8px; border-left: 4px solid var(--accent-color);">
+                        <div style="flex: 1;">
+                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 5px;">${trackData.song}</div>
+                            <div style="color: var(--text-secondary); margin-bottom: 5px;">by ${trackData.artist}</div>
+                            <div style="color: var(--text-secondary); font-size: 14px;">on ${trackData.album}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 14px; margin-bottom: 5px;">
+                                ${trackData.progress} / ${trackData.duration}
+                            </div>
+                            <div style="font-size: 12px; color: ${trackData.is_playing ? 'var(--accent-color)' : 'var(--text-secondary)'};">
+                                ${trackData.is_playing ? '▶️ Playing' : '⏸️ Paused'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div style="padding: 20px; text-align: center; background: var(--card-bg); border-radius: 8px; color: var(--text-secondary);">
+                        No track currently playing
+                    </div>
+                `;
+            }
+        }
         document.addEventListener('DOMContentLoaded', function() {
             const bars = document.querySelectorAll('.bar-fill, .artist-bar-fill');
             bars.forEach(bar => {
@@ -1208,6 +1255,15 @@ MUSIC_STATS_HTML = """
                     bar.style.width = width;
                 }, 100);
             });
+            setupCurrentTrackSSE();
+            fetch('/api/current_track')
+                .then(response => response.json())
+                .then(data => {
+                    updateCurrentTrackDisplay(data.track);
+                })
+                .catch(error => {
+                    console.error('Error fetching initial track:', error);
+                });
         });
     </script>
 </body>
@@ -1262,6 +1318,7 @@ def save_all_config():
     config["settings"]["use_gpsd"] = 'use_gpsd' in request.form
     config["settings"]["use_google_geo"] = 'use_google_geo' in request.form
     config["settings"]["time_display"] = 'time_display' in request.form
+    config["settings"]["enable_current_track_display"] = 'enable_current_track_display' in request.form
     config["display"]["type"] = request.form.get('display_type', 'framebuffer')
     config["display"]["rotation"] = int(request.form.get('rotation', 0))
     config["auto_start"] = {
@@ -1637,33 +1694,20 @@ def clear_logs():
 
 @app.route('/music_stats')
 def music_stats():
-    """Display music statistics with charts"""
-    # Load config for theme
     config = load_config()
     ui_config = config.get("ui", {"theme": "dark"})
-    current_theme = ui_config.get("theme", "dark")
-    
-    # Get time period from request
     period = request.args.get('period', '1hour')
     try:
         lines = int(request.args.get('lines', 1000))
     except:
         lines = 1000
-    
-    # Load and filter song data
     songs_data = load_song_data(period)
-    
-    # Generate statistics
     song_stats, artist_stats = generate_music_stats(songs_data)
-    
-    # Create chart data and pre-zip for template
     song_chart_data = generate_chart_data(song_stats, 'Songs')
     artist_chart_data = generate_chart_data(artist_stats, 'Artists')
-    
-    # Pre-zip the data for the template
     song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
     artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
-    
+    enable_current_track = config["settings"].get("enable_current_track_display", True)
     return render_template_string(MUSIC_STATS_HTML, 
                                 song_chart_items=song_chart_items,
                                 artist_chart_items=artist_chart_items,
@@ -1672,7 +1716,38 @@ def music_stats():
                                 total_plays=len(songs_data),
                                 unique_songs=len(song_stats),
                                 unique_artists=len(artist_stats),
+                                enable_current_track_display=enable_current_track,
                                 ui_config=ui_config)
+
+@app.route('/stream/current_track')
+def stream_current_track():
+    def generate():
+        last_data = None
+        while True:
+            current_track = get_current_track()
+            track_data = {
+                'song': current_track['song'],
+                'artist': current_track['artist'],
+                'album': current_track['album'],
+                'progress': current_track['progress'],
+                'duration': current_track['duration'],
+                'is_playing': current_track['is_playing'],
+                'has_track': current_track['has_track'],
+                'timestamp': datetime.now().isoformat()
+            }
+            if track_data != last_data:
+                yield f"data: {json.dumps(track_data)}\n\n"
+                last_data = track_data
+            time.sleep(2)
+    return Response(generate(), mimetype='text/event-stream')
+
+@app.route('/api/current_track')
+def api_current_track():
+    current_track = get_current_track()
+    return {
+        'track': current_track,
+        'timestamp': datetime.now().isoformat()
+    }
 
 @app.route('/clear_song_logs', methods=['POST'])
 def clear_song_logs():
@@ -1726,6 +1801,51 @@ def log_song_play(song_info):
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error logging song play: {e}")
+
+def get_current_track():
+    try:
+        state_file = '.current_track_state.toml'
+        if os.path.exists(state_file):
+            state_data = toml.load(state_file)
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 60:
+                progress_sec = track_data.get('current_position', 0)
+                duration_sec = track_data.get('duration', 0)
+                progress_min = progress_sec // 60
+                progress_sec = progress_sec % 60
+                duration_min = duration_sec // 60
+                duration_sec = duration_sec % 60
+                return {
+                    'song': track_data.get('title', 'Unknown Track'),
+                    'artist': track_data.get('artists', 'Unknown Artist'),
+                    'album': track_data.get('album', 'Unknown Album'),
+                    'progress': f"{progress_min}:{progress_sec:02d}",
+                    'duration': f"{duration_min}:{duration_sec:02d}",
+                    'is_playing': track_data.get('is_playing', False),
+                    'has_track': track_data.get('title') != 'No track playing'
+                }
+        return {
+            'song': 'No track playing',
+            'artist': '',
+            'album': '',
+            'progress': '0:00',
+            'duration': '0:00',
+            'is_playing': False,
+            'has_track': False
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting current track: {e}")
+        return {
+            'song': 'Error loading track',
+            'artist': '',
+            'album': '',
+            'progress': '0:00',
+            'duration': '0:00',
+            'is_playing': False,
+            'has_track': False
+        }
 
 def load_song_data(period='1hour'):
     if not os.path.exists('songs.toml'):

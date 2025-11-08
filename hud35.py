@@ -22,7 +22,7 @@ SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
 UPDATE_INTERVAL_WEATHER = 3600
 GEO_UPDATE_INTERVAL = 3600
-SPOTIFY_UPDATE_INTERVAL = 2
+SPOTIFY_UPDATE_INTERVAL = 1
 SCOPE = "user-read-currently-playing"
 USE_GPSD = True
 USE_GOOGLE_GEO = True
@@ -71,9 +71,10 @@ DEFAULT_CONFIG = {
         "fallback_city": "",
         "use_gpsd": True,
         "use_google_geo": True,
-        "time_display": True
+        "time_display": True,
+        "enable_current_track_display": True
     },
-        "buttons": {
+    "buttons": {
         "button_a": 5,
         "button_b": 6, 
         "button_x": 16,
@@ -137,6 +138,7 @@ FALLBACK_CITY = config["settings"]["fallback_city"]
 USE_GPSD = config["settings"]["use_gpsd"]
 USE_GOOGLE_GEO = config["settings"]["use_google_geo"]
 TIME_DISPLAY = config["settings"]["time_display"]
+ENABLE_CURRENT_TRACK_DISPLAY = config["settings"]["enable_current_track_display"]
 FRAMEBUFFER = config["settings"]["framebuffer"]
 BUTTON_A = config["buttons"]["button_a"]
 BUTTON_B = config["buttons"]["button_b"]
@@ -748,10 +750,38 @@ def fetch_and_store_artist_image(sp, artist_id):
     except Exception:
         with artist_image_lock: artist_image = None
 
+def write_current_track_state(track_data):
+    if not ENABLE_CURRENT_TRACK_DISPLAY:
+        return
+    try:
+        state_data = {}
+        if track_data:
+            state_data['current_track'] = {
+                'title': track_data.get('title', 'Unknown Track'),
+                'artists': track_data.get('artists', 'Unknown Artist'),
+                'album': track_data.get('album', 'Unknown Album'),
+                'current_position': track_data.get('current_position', 0),
+                'duration': track_data.get('duration', 0),
+                'is_playing': track_data.get('is_playing', False),
+                'timestamp': time.time()
+            }
+        else:
+            state_data['current_track'] = {
+                'title': 'No track playing',
+                'artists': '',
+                'album': '',
+                'current_position': 0,
+                'duration': 0,
+                'is_playing': False,
+                'timestamp': time.time()
+            }
+        with open('.current_track_state.toml', 'w') as f:
+            toml.dump(state_data, f)
+    except Exception as e:
+        print(f"Error writing track state: {e}")
+
 def spotify_loop():
     global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache
-    
-    # Validate token cache file first
     if os.path.exists(".spotify_cache"):
         try:
             with open(".spotify_cache", "r") as f:
@@ -765,10 +795,8 @@ def spotify_loop():
                 os.remove(".spotify_cache")
             except:
                 pass
-    
     try:
         sp_oauth = setup_spotify_oauth()
-        # Test the oauth setup
         test_token = sp_oauth.get_cached_token()
         if not test_token:
             print("❌ No valid Spotify token found. Authentication required.")
@@ -912,6 +940,7 @@ def spotify_loop():
                         album_art_image = None
                     with artist_image_lock: 
                         artist_image = None
+                    write_current_track_state(None)
                     update_spotify_layout(None)
                     if START_SCREEN == "spotify":
                         update_display()
@@ -945,6 +974,7 @@ def spotify_loop():
                             art_url != last_art_url)
             if current_id != last_track_id or spotify_track is None or force_reload_art:
                 spotify_track = new_track
+                write_current_track_state(spotify_track)
                 try:
                     if art_url:
                         headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
@@ -1001,8 +1031,13 @@ def spotify_loop():
                     update_display()
                     print(f"🎵 Now playing: {new_track['artists']} -- {new_track['title']}")
             else:
-                spotify_track['current_position'] = track.get('progress_ms', 0) // 1000
+                old_position = spotify_track.get('current_position', 0) if spotify_track else 0
+                new_position = track.get('progress_ms', 0) // 1000
+                spotify_track['current_position'] = new_position
                 spotify_track['is_playing'] = track.get('is_playing', False)
+                position_diff = abs(new_position - old_position)
+                if position_diff >= 5 or spotify_track['is_playing'] != track.get('is_playing', False):
+                    write_current_track_state(spotify_track)
         except requests.exceptions.RequestException as e:
             spotify_error_count += 1
             last_error_time = time.time()
@@ -1044,6 +1079,11 @@ def spotify_loop():
                 update_display()
             if spotify_error_count >= 5:
                 spotify_error_count = 0
+        if spotify_track and spotify_track.get('is_playing', False):
+            current_time = time.time()
+            if not hasattr(spotify_loop, 'last_track_write') or current_time - spotify_loop.last_track_write:
+                write_current_track_state(spotify_track)
+                spotify_loop.last_track_write = current_time
         time.sleep(SPOTIFY_UPDATE_INTERVAL)
 
 def weather_loop():
