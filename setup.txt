@@ -13,3 +13,8 @@ sudo ./LCD35-show
 
 for display hat mini
 sudo pip3 install st7789 --break-system-packages
+
+for waveshare v3 or v4
+(unknown if needed currently)sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
+sudo pip3 install eink-wave --break-system-packages
+use waveshare/epdconfig.py in folder /usr/local/lib/python3.11/dist-packages/waveshare_epd/epdconfig.py
