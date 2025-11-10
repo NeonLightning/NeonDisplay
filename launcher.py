@@ -2484,28 +2484,34 @@ def get_last_logged_song():
 
 def log_song_play(song_info):
     global last_logged_song
+    logger = logging.getLogger('Launcher')
     current_song = song_info.get('full_track', '').strip()
     if last_logged_song and current_song == last_logged_song:
-        logger = logging.getLogger('Launcher')
-        logger.info(f"⏭️ Skipping duplicate song: {current_song}")
         return
     try:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         song = song_info.get('song', '').replace('"', '\\"')
-        artist = song_info.get('artist', '').replace('"', '\\"')
-        full_track = song_info.get('full_track', '').replace('"', '\\"')
-        artists = song_info.get('artists', [artist])
+        artists = song_info.get('artists', [])
+        if isinstance(artists, list):
+            separated_artists = []
+            for artist in artists:
+                if isinstance(artist, str) and ',' in artist:
+                    separated_artists.extend([a.strip() for a in artist.split(',') if a.strip()])
+                else:
+                    separated_artists.append(str(artist).strip())
+            artists_list = separated_artists
+        elif isinstance(artists, str):
+            artists_list = [a.strip() for a in artists.split(',') if a.strip()]
+        else:
+            artists_list = []
         with open('songs.toml', 'a') as f:
             f.write("[[play]]\n")
             f.write(f"timestamp = \"{timestamp}\"\n")
             f.write(f"song = \"{song}\"\n")
-            f.write(f"artist = \"{artist}\"\n")
-            f.write(f"full_track = \"{full_track}\"\n")
-            f.write(f"artists = {artists}\n")
+            f.write(f"artists = {artists_list}\n")
             f.write("\n")
         last_logged_song = current_song
     except Exception as e:
-        logger = logging.getLogger('Launcher')
         logger.error(f"Error logging song play: {e}")
 
 def log_current_track_state():
@@ -2517,20 +2523,22 @@ def log_current_track_state():
         track_data = state_data.get('current_track', {})
         if not track_data.get('title') or track_data.get('title') == 'No track playing':
             return
-
-        artist_str = track_data.get('artists', '')
-        artists_list = [a.strip() for a in artist_str.split(',')] if artist_str else ['Unknown Artist']
-
+        artists_data = track_data.get('artists', '')
+        if isinstance(artists_data, list):
+            artists_list = artists_data
+        else:
+            artists_list = [a.strip() for a in artists_data.split(',')] if artists_data else []
+        
         song_info = {
             'song': track_data.get('title', ''),
-            'artist': artist_str,
             'artists': artists_list,
-            'full_track': f"{artist_str} -- {track_data.get('title', '')}"
+            'full_track': f"{', '.join(artists_list)} -- {track_data.get('title', '')}" if artists_list else f"Unknown Artist -- {track_data.get('title', '')}"
         }
         current_song = song_info.get('full_track', '').strip()
         if last_logged_song and current_song == last_logged_song:
             return
         log_song_play(song_info)
+        last_logged_song = current_song
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error logging from current track state: {e}")
@@ -2549,9 +2557,14 @@ def get_current_track():
                 progress_sec = progress_sec % 60
                 duration_min = duration_sec // 60
                 duration_sec = duration_sec % 60
+                artists = track_data.get('artists', 'Unknown Artist')
+                if isinstance(artists, list):
+                    artists_str = ', '.join(artists)
+                else:
+                    artists_str = artists
                 return {
                     'song': track_data.get('title', 'Unknown Track'),
-                    'artist': track_data.get('artists', 'Unknown Artist'),
+                    'artist': artists_str,
                     'album': track_data.get('album', 'Unknown Album'),
                     'progress': f"{progress_min}:{progress_sec:02d}",
                     'duration': f"{duration_min}:{duration_sec:02d}",
@@ -2619,19 +2632,20 @@ def generate_music_stats(songs_data):
     artist_counter = Counter()
     for entry in songs_data:
         song = entry.get('song', 'Unknown Song')
-        artist = entry.get('artist', 'Unknown Artist')
-        song_with_artist = f"{song} - {artist}"
-        song_counter[song_with_artist] += 1
         artists = entry.get('artists', [])
-        if isinstance(artists, str):
-            try:
-                artists_clean = artists.strip('[]').replace("'", "").replace('"', '')
-                artists_list = [a.strip() for a in artists_clean.split(',')] if artists_clean else []
-            except:
-                artists_list = [artists]
-        else:
-            artists_list = artists
-        for artist_name in artists_list:
+        clean_artists = []
+        if isinstance(artists, list):
+            for artist in artists:
+                if isinstance(artist, str) and ',' in artist:
+                    clean_artists.extend([a.strip() for a in artist.split(',') if a.strip()])
+                else:
+                    clean_artists.append(str(artist).strip())
+        elif isinstance(artists, str):
+            clean_artists = [a.strip() for a in artists.split(',') if a.strip()]
+        artist_names = ', '.join(clean_artists) if clean_artists else 'Unknown Artist'
+        song_with_artist = f"{song} - {artist_names}"
+        song_counter[song_with_artist] += 1
+        for artist_name in clean_artists:
             if artist_name and artist_name != 'Unknown Artist':
                 artist_counter[artist_name] += 1
     top_songs = dict(song_counter.most_common(20))
