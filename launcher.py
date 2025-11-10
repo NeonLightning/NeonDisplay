@@ -2274,25 +2274,25 @@ def advanced_config():
                     </div>
                 </div>
             </div>
-<div class="section">
-    <h2>📶 WiFi Configuration</h2>
-    <div class="config-grid">
-        <div>
-            <div class="form-group">
-                <label for="ap_ssid">Access Point SSID:</label>
-                <input type="text" id="ap_ssid" name="ap_ssid" value="{{ config.get('wifi', {}).get('ap_ssid', 'Neonwifi-Manager') }}" placeholder="Neonwifi-Manager">
-                <small>SSID for the WiFi manager access point</small>
+            <div class="section">
+                <h2>📶 WiFi Configuration</h2>
+                <div class="config-grid">
+                    <div>
+                        <div class="form-group">
+                            <label for="ap_ssid">Access Point SSID:</label>
+                            <input type="text" id="ap_ssid" name="ap_ssid" value="{{ config.get('wifi', {}).get('ap_ssid', 'Neonwifi-Manager') }}" placeholder="Neonwifi-Manager">
+                            <small>SSID for the WiFi manager access point</small>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label for="ap_ip">Access Point IP:</label>
+                            <input type="text" id="ap_ip" name="ap_ip" value="{{ config.get('wifi', {}).get('ap_ip', '192.168.42.1') }}" placeholder="192.168.42.1">
+                            <small>IP address for the WiFi manager access point</small>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div>
-            <div class="form-group">
-                <label for="ap_ip">Access Point IP:</label>
-                <input type="text" id="ap_ip" name="ap_ip" value="{{ config.get('wifi', {}).get('ap_ip', '192.168.42.1') }}" placeholder="192.168.42.1">
-                <small>IP address for the WiFi manager access point</small>
-            </div>
-        </div>
-    </div>
-</div>
             <div class="section">
                 <h2>🎮 Button Configuration</h2>
                 <div class="button-grid">
@@ -2517,16 +2517,19 @@ def log_current_track_state():
         track_data = state_data.get('current_track', {})
         if not track_data.get('title') or track_data.get('title') == 'No track playing':
             return
+
+        artist_str = track_data.get('artists', '')
+        artists_list = [a.strip() for a in artist_str.split(',')] if artist_str else ['Unknown Artist']
+
         song_info = {
             'song': track_data.get('title', ''),
-            'artist': track_data.get('artists', ''),
-            'artists': [track_data.get('artists', '')],
-            'full_track': f"{track_data.get('artists', '')} -- {track_data.get('title', '')}"
+            'artist': artist_str,
+            'artists': artists_list,
+            'full_track': f"{artist_str} -- {track_data.get('title', '')}"
         }
         current_song = song_info.get('full_track', '').strip()
         if last_logged_song and current_song == last_logged_song:
             return
-        # Log the song
         log_song_play(song_info)
     except Exception as e:
         logger = logging.getLogger('Launcher')
@@ -2671,6 +2674,7 @@ def main():
     load_config()
     logger = setup_logging()
     logger.info("🚀 Starting HUD35 Launcher")
+    
     def get_lan_ips():
         ips = []
         try:
@@ -2691,36 +2695,41 @@ def main():
         except Exception as e:
             logger.warning(f"Could not determine LAN IP: {e}")
         return list(set(ips))
+    
     lan_ips = get_lan_ips()
     auto_launch_applications()
-    if lan_ips:
-        for ip in lan_ips:
-            logger.info(f"📍 Web UI available at: http://{ip}:5000")
-    else:
-        logger.info("📍 Web UI available at: http://127.0.0.1:5000")
-        logger.info("   (Could not detect LAN IP - using localhost)")
-    logger.info("⏹️  Press Ctrl+C to stop the hud35")
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    try:
-        sys.stdout = open(os.devnull, 'w')
-        sys.stderr = open(os.devnull, 'w')
-        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-        app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-    except OSError as e:
-        if "Address already in use" in str(e):
-            logger.info("Port 5000 busy, trying port 5001...")
+    import logging as pylogging
+    log = pylogging.getLogger('werkzeug')
+    log.setLevel(pylogging.WARNING)
+    ports = [5000, 5001, 5002, 5003]
+    chosen_port = None
+    for port in ports:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('0.0.0.0', port))
+            chosen_port = port
             if lan_ips:
                 for ip in lan_ips:
-                    logger.info(f"📍 Web UI available at: http://{ip}:5001")
+                    logger.info(f"📍 Web UI available at: http://{ip}:{chosen_port}")
             else:
-                logger.info("📍 Web UI available at: http://127.0.0.1:5001")
+                logger.info(f"📍 Web UI available at: http://127.0.0.1:{chosen_port}")
+            logger.info("⏹️  Press Ctrl+C to stop the launcher")
             sys.stdout = open(os.devnull, 'w')
             sys.stderr = open(os.devnull, 'w')
             app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-            app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
-        else:
-            raise
+            app.run(host='0.0.0.0', port=chosen_port, debug=False, use_reloader=False)
+            break
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.debug(f"Port {port} is busy, trying next...")
+                continue
+            else:
+                raise
+    if chosen_port is None:
+        logger.error("❌ Could not find an available port. All ports 5000-5003 are busy.")
+        cleanup()
 
 if __name__ == '__main__':
     try:
