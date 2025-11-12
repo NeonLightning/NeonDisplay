@@ -1118,13 +1118,11 @@ MUSIC_STATS_HTML = """
                     songs: stats.unique_songs,
                     artists: stats.unique_artists
                 });
+                document.querySelector('.stat-card:nth-child(1) .stat-number').textContent = stats.total_plays;
+                document.querySelector('.stat-card:nth-child(2) .stat-number').textContent = stats.unique_songs;
+                document.querySelector('.stat-card:nth-child(3) .stat-number').textContent = stats.unique_artists;
                 if (currentHash !== lastStatsHash) {
-                    document.querySelector('.stat-card:nth-child(1) .stat-number').textContent = stats.total_plays;
-                    document.querySelector('.stat-card:nth-child(2) .stat-number').textContent = stats.unique_songs;
-                    document.querySelector('.stat-card:nth-child(3) .stat-number').textContent = stats.unique_artists;
-                    if (lastStatsHash !== null) {
-                        refreshCharts(false);
-                    }
+                    refreshCharts(false);
                     lastStatsHash = currentHash;
                 }
             };
@@ -1740,6 +1738,27 @@ def music_stats_data():
         'unique_songs': len(song_stats),
         'unique_artists': len(artist_stats)
     }
+
+@app.route('/stream/music_stats')
+def stream_music_stats():
+    period = request.args.get('period', '1hour')
+    try:
+        lines = int(request.args.get('lines', 1000))
+    except:
+        lines = 1000
+    def generate():
+        while True:
+            songs_data = load_song_data(period)
+            song_stats, artist_stats = generate_music_stats(songs_data, lines)
+            stats_data = {
+                'total_plays': len(songs_data),
+                'unique_songs': len(song_stats), 
+                'unique_artists': len(artist_stats),
+                'timestamp': datetime.now().isoformat()
+            }
+            yield f"data: {json.dumps(stats_data)}\n\n"
+            time.sleep(2)
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/music_stats')
 def music_stats():
@@ -2688,7 +2707,6 @@ def generate_music_stats(songs_data, max_items=1000):
         for artist_name in clean_artists:
             if artist_name and artist_name != 'Unknown Artist':
                 artist_counter[artist_name] += 1
-    # Use the max_items parameter instead of hardcoded 20
     top_songs = dict(song_counter.most_common(max_items))
     top_artists = dict(artist_counter.most_common(max_items))
     return top_songs, top_artists
