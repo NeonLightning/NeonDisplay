@@ -1325,7 +1325,7 @@ def spotify_loop():
             time.sleep(10)
         if spotify_track and spotify_track.get('is_playing', False):
             current_time = time.time()
-            if not hasattr(spotify_loop, 'last_track_write') or current_time - spotify_loop.last_track_write > 30:
+            if not hasattr(spotify_loop, 'last_track_write') or current_time - spotify_loop.last_track_write > 2:
                 write_current_track_state(spotify_track)
                 spotify_loop.last_track_write = current_time
         time.sleep(SPOTIFY_UPDATE_INTERVAL)
