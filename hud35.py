@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-import time, requests, json, evdev, spotipy, colorsys, datetime, os, subprocess, toml, random, sys, copy
-import numpy as np
+import time, requests, json, evdev, spotipy, colorsys, datetime, os, subprocess, toml, random, sys, copy, math, queue, threading
+import  numpy as np
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageStat, ImageColor
 from threading import Thread, Event, RLock
 from spotipy.oauth2 import SpotifyOAuth
+
 try:
     import st7789
     HAS_ST7789 = True
@@ -17,7 +18,7 @@ except ImportError:
     HAS_GPIO = False
 HAS_WAVESHARE_EPD = False
 
-sys.stdout.reconfigure(line_buffering=True) 
+sys.stdout.reconfigure(line_buffering=True)
 
 SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
@@ -28,13 +29,15 @@ SCOPE = "user-read-currently-playing"
 USE_GPSD = True
 USE_GOOGLE_GEO = True
 SCREEN_AREA = SCREEN_WIDTH * SCREEN_HEIGHT
-RGB565_MASKS = (0xF8, 0xFC, 0xF8)
-RGB565_SHIFTS = (8, 3, -3)
 BG_DIR = "./bg"
+CLOCK_TYPE = "analog"
+CLOCK_BACKGROUND = "color"
+CLOCK_COLOR = "black"
+
 DEFAULT_CONFIG = {
     "display": {
-        "type": "st7789",  # st7789, framebuffer, or waveshare_epd
-        "framebuffer": "/dev/fb1", 
+        "type": "st7789",
+        "framebuffer": "/dev/fb1",
         "rotation": 0,
         "st7789": {
             "spi_port": 0,
@@ -76,9 +79,14 @@ DEFAULT_CONFIG = {
         "progressbar_display": True,
         "enable_current_track_display": True
     },
+    "clock": {
+        "type": "analog",
+        "background": "color",
+        "color": "black"
+    },
     "buttons": {
         "button_a": 5,
-        "button_b": 6, 
+        "button_b": 6,
         "button_x": 16,
         "button_y": 24
     }
@@ -88,8 +96,6 @@ bg_cache = {}
 text_bbox_cache = {}
 weather_cache = {}
 album_bg_cache = {}
-cached_background = None
-current_art_hash = None
 exit_event = Event()
 art_lock = RLock()
 artist_image_lock = RLock()
@@ -100,7 +106,33 @@ waveshare_base_image = None
 partial_refresh_count = 0
 epd2in13_V3 = None
 epdconfig = None
-waveshare_epd = None
+bg_generation_queue = queue.Queue(maxsize=5)
+spotify_bg_cache = None
+spotify_bg_cache_lock = threading.Lock()
+current_album_art_hash = None
+current_clock_artwork = None
+clock_bg_image = None
+clock_bg_lock = threading.Lock()
+button_last_press = {5: 0, 6: 0, 16: 0, 24: 0}
+_gamma_r = np.array([int(((i / 255.0) ** (1 / 1.5)) * 31 + 0.5) for i in range(256)], dtype=np.uint8)
+_gamma_g = np.array([int(((i / 255.0) ** (1 / 1.5)) * 63 + 0.5) for i in range(256)], dtype=np.uint8)
+_gamma_b = np.array([int(((i / 255.0) ** (1 / 1.5)) * 31 + 0.5) for i in range(256)], dtype=np.uint8)
+weather_info = None
+spotify_track = None
+sp = None
+album_art_image = None
+artist_image = None
+scroll_state = {"title": {"offset": 0, "max_offset": 0, "active": False}, "artists": {"offset": 0, "max_offset": 0, "active": False}, "album": {"offset": 0, "max_offset": 0, "active": False}}
+bg_map = {"Clear": "bg_clear.png", "Clouds": "bg_clouds.png", "Rain": "bg_rain.png", "Drizzle": "bg_drizzle.png", "Thunderstorm": "bg_storm.png", "Snow": "bg_snow.png", "Mist": "bg_mist.png", "Fog": "bg_fog.png", "Haze": "bg_haze.png", "Smoke": "bg_smoke.png", "Dust": "bg_dust.png", "Sand": "bg_sand.png", "Ash": "bg_ash.png", "Squall": "bg_squall.png", "Tornado": "bg_tornado.png"}
+art_pos = [float(SCREEN_WIDTH - 155), float(SCREEN_HEIGHT - 155)]
+artist_pos = [5, float(SCREEN_HEIGHT - 105)]
+artist_velocity = [0.7, 0.7]
+art_velocity = [1, 1]
+artist_on_top = False
+spotify_layout_cache = None
+scrolling_text_cache = {}
+last_display_time = 0
+waveshare_lock = RLock()
 
 def load_config(path="config.toml"):
     if not os.path.exists(path):
@@ -153,119 +185,16 @@ BUTTON_A = config["buttons"]["button_a"]
 BUTTON_B = config["buttons"]["button_b"]
 BUTTON_X = config["buttons"]["button_x"]
 BUTTON_Y = config["buttons"]["button_y"]
-GAMMA = 1.5
+CLOCK_TYPE = config["clock"]["type"]
+CLOCK_BACKGROUND = config["clock"]["background"]
+CLOCK_COLOR = config["clock"].get("color", "black")
 MIN_DISPLAY_INTERVAL = 0.001
-TEXT_METRICS = {}
 DEBOUNCE_TIME = 0.3
-
-button_last_press = {BUTTON_A: 0, BUTTON_B: 0, BUTTON_X: 0, BUTTON_Y: 0}
-_gamma_r = np.array([int(((i / 255.0) ** (1 / GAMMA)) * 31 + 0.5) for i in range(256)], dtype=np.uint8)
-_gamma_g = np.array([int(((i / 255.0) ** (1 / GAMMA)) * 63 + 0.5) for i in range(256)], dtype=np.uint8)
-_gamma_b = np.array([int(((i / 255.0) ** (1 / GAMMA)) * 31 + 0.5) for i in range(256)], dtype=np.uint8)
-weather_info = None
-spotify_track = None
-sp = None
-album_art_image = None
-artist_image = None
-scroll_state = {"title": {"offset": 0, "max_offset": 0, "active": False}, "artists": {"offset": 0, "max_offset": 0, "active": False}, "album": {"offset": 0, "max_offset": 0, "active": False}}
-bg_map = {"Clear": "bg_clear.png", "Clouds": "bg_clouds.png", "Rain": "bg_rain.png", "Drizzle": "bg_drizzle.png", "Thunderstorm": "bg_storm.png", "Snow": "bg_snow.png", "Mist": "bg_mist.png", "Fog": "bg_fog.png", "Haze": "bg_haze.png", "Smoke": "bg_smoke.png", "Dust": "bg_dust.png", "Sand": "bg_sand.png", "Ash": "bg_ash.png", "Squall": "bg_squall.png", "Tornado": "bg_tornado.png"}
-art_pos = [float(SCREEN_WIDTH - 155), float(SCREEN_HEIGHT - 155)]
-artist_pos = [5, float(SCREEN_HEIGHT - 105)]
-artist_velocity = [0.7, 0.7]
-art_velocity = [1, 1]
-artist_on_top = False
-spotify_layout_cache = None
-scrolling_text_cache = {}
-last_display_time = 0
-waveshare_lock = RLock()
-
-def init_text_metrics():
-    global TEXT_METRICS
-    TEXT_METRICS = {'time': MEDIUM_FONT.getbbox("00:00"), 'temp_large': LARGE_FONT.getbbox("000°C"), 'feels_like': MEDIUM_FONT.getbbox("Feels like: 000°C"), 'humidity': SMALL_FONT.getbbox("Humidity: 100%"), 'pressure': SMALL_FONT.getbbox("Pressure: 1000 hPa"), 'wind': SMALL_FONT.getbbox("Wind: 00.0 m/s")}
-init_text_metrics()
-
-def check_configuration():
-    config = load_config()
-    missing_keys = []
-    if not config["api_keys"]["openweather"]:
-        missing_keys.append("OpenWeatherMap API key")
-    if not config["api_keys"]["client_id"]:
-        missing_keys.append("Spotify Client ID")
-    if not config["api_keys"]["client_secret"]:
-        missing_keys.append("Spotify Client Secret")
-    if missing_keys:
-        print("\n" + "="*60)
-        print("HUD35 Configuration Required")
-        print("="*60)
-        print("The following configuration is missing:")
-        for key in missing_keys:
-            print(f"  - {key}")
-        print(f"\nPlease run the setup server:")
-        print(f"  python3 setup.py")
-        print(f"Then visit: http://localhost:5000")
-        print("="*60)
-        if os.path.exists("setup.py"):
-            response = input("\nStart setup server now? (y/n): ")
-            if response.lower() in ['y', 'yes']:
-                print("Starting setup server...")
-                try:
-                    subprocess.run([sys.executable, "setup.py"])
-                except Exception as e:
-                    print(f"Failed to start setup server: {e}")
-        else:
-            print("\nSetup script not found. Please create setup.py")
-        
-        sys.exit(1)
-    sp_oauth = SpotifyOAuth(
-        client_id=config["api_keys"]["client_id"],
-        client_secret=config["api_keys"]["client_secret"],
-        redirect_uri=config["api_keys"]["redirect_uri"],
-        scope="user-read-currently-playing",
-        cache_path=".spotify_cache"
-    )
-    token_info = sp_oauth.get_cached_token()
-    if not token_info:
-        print("\n" + "="*60)
-        print("Spotify Authentication Required")
-        print("="*60)
-        print("Spotify credentials are configured but not authenticated.")
-        print(f"Please visit: http://localhost:5000/spotify_auth")
-        print("="*60)
-        if os.path.exists("setup.py"):
-            response = input("\nOpen authentication page now? (y/n): ")
-            if response.lower() in ['y', 'yes']:
-                print("Starting setup server for authentication...")
-                try:
-                    import threading
-                    def start_auth_server():
-                        subprocess.run([sys.executable, "setup.py"])
-                    auth_thread = threading.Thread(target=start_auth_server, daemon=True)
-                    auth_thread.start()
-                    time.sleep(3)
-                    try:
-                        import webbrowser
-                        webbrowser.open("http://localhost:5000/spotify_auth")
-                    except:
-                        print("Please open http://localhost:5000/spotify_auth in your browser")
-                    
-                    input("Press Enter after completing Spotify authentication...")
-                except Exception as e:
-                    print(f"Failed to start auth server: {e}")
-        sys.exit(1)
-
-def setup_spotify_oauth():
-    return SpotifyOAuth(
-        client_id=config["api_keys"]["client_id"],
-        client_secret=config["api_keys"]["client_secret"],
-        redirect_uri=config["api_keys"]["redirect_uri"],
-        scope=SCOPE,
-        cache_path=".spotify_cache"
-    )
 
 def get_cached_bg(bg_path, size):
     key = (bg_path, size)
     if key not in bg_cache:
-        bg_img = Image.open(bg_path).resize(size, Image.LANCZOS)
+        bg_img = Image.open(bg_path).resize(size, Image.BILINEAR)
         bg_cache[key] = bg_img
     return bg_cache[key]
 
@@ -283,9 +212,6 @@ def cleanup_caches():
         keys = list(album_bg_cache.keys())[-3:]
         album_bg_cache = {k: album_bg_cache[k] for k in keys}
 
-def quantize_to_rgb565(r, g, b):
-    return (r // 8) * 8, (g // 4) * 4, (b // 8) * 8
-
 def get_location_via_gpsd(timeout=5, debug=True):
     try:
         dev_result = subprocess.run(['gpspipe', '-w', '-n', '2'], capture_output=True, text=True, check=False)
@@ -301,7 +227,6 @@ def get_location_via_gpsd(timeout=5, debug=True):
         if not devices_found: return None, None
         tpv_result = subprocess.run(['timeout', str(timeout), 'gpspipe', '-w', '-n', '10'], capture_output=True, text=True, check=False)
         if tpv_result.returncode == 124:
-            if debug: pass
             return None, None
         elif tpv_result.returncode != 0:
             return None, None
@@ -377,7 +302,7 @@ def get_weather_data_by_coords(api_key, lat, lon, units):
 
 def get_contrasting_colors(img, n=2):
     if img.mode != "RGB": img = img.convert("RGB")
-    small_img = img.resize((50, 50), Image.LANCZOS)
+    small_img = img.resize((50, 50), Image.BILINEAR)
     pixels = list(small_img.getdata())
     avg_r = sum(p[0] for p in pixels) // len(pixels)
     avg_g = sum(p[1] for p in pixels) // len(pixels)
@@ -407,32 +332,31 @@ def make_background_from_art(size, album_art_img):
                 r, g, b = bg.getpixel((x, y))
                 bg.putpixel((x, y), (int(r * factor), int(g * factor), int(b * factor)))
         return bg
-    if album_art_img.mode != "RGB": album_art_img = album_art_img.convert("RGB")
-    small = album_art_img.resize((50, 50), Image.LANCZOS)
-    pixels = list(small.getdata())
+    if album_art_img.mode != "RGB":
+        album_art_img = album_art_img.convert("RGB")
+    small_for_color = album_art_img.resize((50, 50), Image.BILINEAR)
+    pixels = list(small_for_color.getdata())
     r = sum(p[0] for p in pixels) // len(pixels)
     g = sum(p[1] for p in pixels) // len(pixels)
     b = sum(p[2] for p in pixels) // len(pixels)
     avg_color = (int(r * 0.7), int(g * 0.7), int(b * 0.7))
     bg = Image.new("RGB", size, avg_color)
     art_size = height
-    scaled_art = album_art_img.resize((art_size, art_size), Image.LANCZOS)
-    blurred_art = scaled_art.filter(ImageFilter.GaussianBlur(4))
+    scaled_art = album_art_img.resize((art_size, art_size), Image.BILINEAR)
+    blurred_art = scaled_art.filter(ImageFilter.GaussianBlur(2))
     enhancer = ImageEnhance.Brightness(blurred_art)
     blurred_art = enhancer.enhance(0.6)
     fade_width = min(80, art_size // 4)
-    mask = Image.new("L", (art_size, art_size), 0)
-    for x in range(art_size):
-        if x < fade_width:
-            progress = x / fade_width
-            alpha = int(255 * (progress ** 0.7))
-        elif x > art_size - fade_width:
-            progress = (art_size - x) / fade_width
-            alpha = int(255 * (progress ** 0.7))
-        else:
-            alpha = 255
-        for y in range(art_size):
-            mask.putpixel((x, y), alpha)
+    x_coords = np.arange(art_size)
+    left_fade_mask = np.where(x_coords < fade_width,
+                            255 * ((x_coords / fade_width) ** 0.7),
+                            255).astype(np.uint8)
+    right_fade_mask = np.where(x_coords > art_size - fade_width,
+                            255 * (((art_size - x_coords) / fade_width) ** 0.7),
+                            255).astype(np.uint8)
+    combined_alpha = np.minimum(left_fade_mask, right_fade_mask)
+    mask_array = np.tile(combined_alpha, (art_size, 1))
+    mask = Image.fromarray(mask_array, mode='L')
     art_x = (width - art_size) // 2
     bg.paste(blurred_art, (art_x, 0), mask)
     return bg
@@ -449,6 +373,48 @@ def get_cached_background(size, album_art_img):
     bg = make_background_from_art(size, album_art_img)
     album_bg_cache[img_hash] = bg.copy()
     return bg
+
+def background_generation_worker():
+    global spotify_bg_cache, current_album_art_hash, clock_bg_image
+    while not exit_event.is_set():
+        try:
+            album_img, size, bg_type = bg_generation_queue.get(timeout=1)
+            if bg_type == "spotify":
+                generated_bg = get_cached_background(size, album_img)
+                with spotify_bg_cache_lock:
+                    spotify_bg_cache = generated_bg.copy() if generated_bg else None
+                    current_album_art_hash = id(album_img) if album_img else None
+            elif bg_type == "clock":
+                clock_bg_result = get_cached_background(size, album_img)
+                with clock_bg_lock:
+                    clock_bg_image = clock_bg_result.copy() if clock_bg_result else None
+            else:
+                print(f"Unknown background type requested: {bg_type}")
+            bg_generation_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print(f"Background generation worker error: {e}")
+            bg_generation_queue.task_done()
+
+def request_background_generation(album_img):
+    global current_clock_artwork
+    if album_img is not None:
+        with clock_bg_lock:
+            if current_clock_artwork is None or id(album_img) != id(current_clock_artwork):
+                current_clock_artwork = album_img.copy()
+        try:
+            bg_generation_queue.put((album_img, (SCREEN_WIDTH, SCREEN_HEIGHT), "spotify"), block=False)
+        except queue.Full:
+            print("Spotify background generation queue is full, skipping request.")
+        if CLOCK_BACKGROUND == "album":
+            try:
+                bg_generation_queue.put((album_img, (SCREEN_WIDTH, SCREEN_HEIGHT), "clock"), block=False)
+            except queue.Full:
+                print("Clock background generation queue is full, skipping request.")
+    else:
+        with clock_bg_lock:
+            current_clock_artwork = None
 
 def get_background_path(weather_info):
     if not weather_info:
@@ -511,13 +477,13 @@ def draw_weather_image(weather_info):
                 resp = requests.get(icon_url, timeout=5)
                 resp.raise_for_status()
                 icon_img = Image.open(BytesIO(resp.content)).convert("RGBA")
-                icon_img.thumbnail((128, 128), Image.LANCZOS)
+                icon_img.thumbnail((128, 128), Image.BILINEAR)
                 img.paste(icon_img, (SCREEN_WIDTH - icon_img.size[0], SCREEN_HEIGHT - icon_img.size[1] - 40), icon_img)
             except Exception:
                 pass
         if TIME_DISPLAY:
             now = datetime.datetime.now().strftime("%H:%M")
-            time_bbox = TEXT_METRICS['time']
+            time_bbox = get_cached_text_bbox(now, MEDIUM_FONT)
             time_width = time_bbox[2] - time_bbox[0]
             time_height = time_bbox[3] - time_bbox[1]
             x = SCREEN_WIDTH - time_width - 10
@@ -529,7 +495,7 @@ def draw_weather_image(weather_info):
             draw_text_aliased(draw, img, (x, y), now, MEDIUM_FONT, "gray")
     else:
         error_text = "Failed to fetch weather data."
-        bbox = TEXT_METRICS['feels_like']
+        bbox = get_cached_text_bbox(error_text, MEDIUM_FONT)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         x = (SCREEN_WIDTH - text_width) // 2
@@ -542,7 +508,7 @@ def draw_weather_image(weather_info):
         draw_text_aliased(draw, img, (x, y), error_text, MEDIUM_FONT, "red")
         if TIME_DISPLAY:
             now = datetime.datetime.now().strftime("%H:%M")
-            time_bbox = TEXT_METRICS['time']
+            time_bbox = get_cached_text_bbox(now, MEDIUM_FONT)
             time_width = time_bbox[2] - time_bbox[0]
             time_height = time_bbox[3] - time_bbox[1]
             time_x = SCREEN_WIDTH - time_width - 10
@@ -588,7 +554,13 @@ def draw_spotify_image(spotify_track):
     global album_art_image, artist_image, artist_on_top
     with art_lock:
         art_img = album_art_image
-    img = get_cached_background((SCREEN_WIDTH, SCREEN_HEIGHT), art_img)
+    bg_to_use = None
+    with spotify_bg_cache_lock:
+        if spotify_bg_cache is not None and art_img is not None and current_album_art_hash == id(art_img):
+            bg_to_use = spotify_bg_cache.copy()
+    if bg_to_use is None:
+        bg_to_use = get_cached_background((SCREEN_WIDTH, SCREEN_HEIGHT), art_img)
+    img = bg_to_use
     if spotify_track and 'main_color' in spotify_track and 'secondary_color' in spotify_track:
         main_color = spotify_track['main_color']
         secondary_color = spotify_track['secondary_color']
@@ -668,7 +640,6 @@ def draw_spotify_image(spotify_track):
         border_width = 2
         progress_bar_y = SCREEN_HEIGHT - progress_bar_height
         time_y_offset = progress_bar_height + border_width + 1
-        
         draw.rectangle([
             0, 
             progress_bar_y - border_width, 
@@ -681,7 +652,6 @@ def draw_spotify_image(spotify_track):
             SCREEN_WIDTH - border_width, 
             SCREEN_HEIGHT
         ], fill=(0, 0, 0, 200))
-        
         if spotify_track and 'current_position' in spotify_track and 'duration' in spotify_track:
             current_pos = spotify_track['current_position']
             duration = spotify_track['duration']
@@ -689,7 +659,6 @@ def draw_spotify_image(spotify_track):
                 progress_percent = min(current_pos / duration, 1.0)
             else:
                 progress_percent = 0
-            
             progress_width = int((SCREEN_WIDTH - 2 * border_width) * progress_percent)
             draw.rectangle([
                 border_width, 
@@ -738,57 +707,130 @@ def draw_spotify_image(spotify_track):
     return img
 
 def draw_clock_image():
+    global weather_info, clock_bg_image
     img = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), "black")
-    bg_filename = get_background_path(None)
-    if bg_filename:
-        bg_path = os.path.join(BG_DIR, bg_filename)
-        bg_img = get_cached_bg(bg_path, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        img.paste(bg_img, (0, 0))
+    avg_color = (128, 128, 128)
+    bg_applied = False
+    if CLOCK_BACKGROUND == "album":
+        with clock_bg_lock:
+            bg_to_use = clock_bg_image
+        if bg_to_use is not None:
+            img.paste(bg_to_use, (0, 0))
+            stat = ImageStat.Stat(bg_to_use)
+            avg_color = tuple(int(v) for v in stat.mean[:3])
+            bg_applied = True
+        else:
+            try:
+                if CLOCK_COLOR:
+                    bg_color = ImageColor.getrgb(CLOCK_COLOR)
+                else:
+                    bg_color = (0, 0, 0)
+                img.paste(Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), bg_color))
+                avg_color = bg_color
+                bg_applied = True
+            except Exception:
+                img.paste(Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), "black"))
+                avg_color = (0, 0, 0)
+                bg_applied = True
+    elif CLOCK_BACKGROUND == "weather":
+        bg_filename = get_background_path(weather_info)
+        if bg_filename:
+            bg_path = os.path.join(BG_DIR, bg_filename)
+            if os.path.exists(bg_path):
+                bg_img = get_cached_bg(bg_path, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                img.paste(bg_img, (0, 0))
+                stat = ImageStat.Stat(bg_img)
+                avg_color = tuple(int(v) for v in stat.mean[:3])
+                bg_applied = True
+    if not bg_applied:
+        try:
+            if CLOCK_COLOR:
+                bg_color = ImageColor.getrgb(CLOCK_COLOR)
+            else:
+                hue_shift = (datetime.datetime.now().second / 60.0) % 1.0
+                rr, gg, bb = colorsys.hsv_to_rgb(hue_shift, 0.5, 0.2)
+                bg_color = (int(rr * 255), int(gg * 255), int(bb * 255))
+            img.paste(Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), bg_color))
+            avg_color = bg_color
+        except Exception:
+            img.paste(Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), "black"))
+            avg_color = (0, 0, 0)
+    r, g, b = [x / 255.0 for x in avg_color]
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    base_hue = (h + 0.5) % 1.0
+    contrast_saturation = 0.8 + (0.4 * (1.0 - s))
+    contrast_brightness = 0.85 if v < 0.5 else 0.25
+    palette = []
+    for i in range(5):
+        hh = (base_hue + i * 0.18) % 1.0
+        rr, gg, bb = colorsys.hsv_to_rgb(hh, contrast_saturation, contrast_brightness)
+        rr, gg, bb = int(rr * 255), int(gg * 255), int(bb * 255)
+        rr = min(max(rr + (128 - avg_color[0]) // 2, 0), 255)
+        gg = min(max(gg + (128 - avg_color[1]) // 2, 0), 255)
+        bb = min(max(bb + (128 - avg_color[2]) // 2, 0), 255)
+        palette.append((rr, gg, bb))
+    face_color, notch_color, hour_color, minute_color, second_color = palette
     draw = ImageDraw.Draw(img)
     now = datetime.datetime.now()
-    time_str = now.strftime("%H:%M:%S")
-    date_str = now.strftime("%A, %B %d, %Y")
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    overlay_draw = ImageDraw.Draw(overlay)
-    time_bbox = get_cached_text_bbox(time_str, LARGE_FONT)
-    time_width = time_bbox[2] - time_bbox[0]
-    time_height = time_bbox[3] - time_bbox[1]
-    time_x = (SCREEN_WIDTH - time_width) // 2
-    time_y = (SCREEN_HEIGHT - time_height) // 2 - 30
-    overlay_draw.rectangle([
-        time_x - 20, time_y - 10,
-        time_x + time_width + 20, time_y + time_height + 10
-    ], fill=(0, 0, 0, 180))
-    date_bbox = get_cached_text_bbox(date_str, MEDIUM_FONT)
-    date_width = date_bbox[2] - date_bbox[0]
-    date_height = date_bbox[3] - date_bbox[1]
-    date_x = (SCREEN_WIDTH - date_width) // 2
-    date_y = time_y + time_height + 20
-    overlay_draw.rectangle([
-        date_x - 15, date_y - 5,
-        date_x + date_width + 15, date_y + date_height + 5
-    ], fill=(0, 0, 0, 180))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-    draw = ImageDraw.Draw(img)
-    draw_text_aliased(draw, img, (time_x, time_y), time_str, LARGE_FONT, "cyan")
-    draw_text_aliased(draw, img, (date_x, date_y), date_str, MEDIUM_FONT, "yellow")
-    seconds = now.second
-    seconds_text = f"{seconds:02d}"
-    seconds_bbox = get_cached_text_bbox(seconds_text, SMALL_FONT)
-    seconds_x = SCREEN_WIDTH - seconds_bbox[2] + seconds_bbox[0] - 10
-    seconds_y = SCREEN_HEIGHT - 30
-    draw_text_aliased(draw, img, (seconds_x, seconds_y), seconds_text, SMALL_FONT, "white")
+    if CLOCK_TYPE == "analog":
+        center_x = SCREEN_WIDTH // 2
+        center_y = SCREEN_HEIGHT // 2
+        radius = min(SCREEN_WIDTH, SCREEN_HEIGHT) // 2 - 20
+        draw.ellipse((center_x - radius, center_y - radius, center_x + radius, center_y + radius),
+                    outline=face_color, width=4)
+        for i in range(12):
+            angle = math.radians(i * 30)
+            x_outer = center_x + radius * math.sin(angle)
+            y_outer = center_y - radius * math.cos(angle)
+            x_inner = center_x + (radius - 15) * math.sin(angle)
+            y_inner = center_y - (radius - 15) * math.cos(angle)
+            draw.line((x_inner, y_inner, x_outer, y_outer), fill=notch_color, width=2)
+        hour = now.hour % 12 + now.minute / 60.0
+        minute = now.minute + now.second / 60.0
+        second = now.second
+        hour_angle = math.radians((hour / 12.0) * 360)
+        minute_angle = math.radians((minute / 60.0) * 360)
+        second_angle = math.radians((second / 60.0) * 360)
+        draw.line((center_x, center_y,
+                    center_x + radius * 0.5 * math.sin(hour_angle),
+                    center_y - radius * 0.5 * math.cos(hour_angle)),
+                    fill=hour_color, width=10)
+        draw.line((center_x, center_y,
+                    center_x + radius * 0.7 * math.sin(minute_angle),
+                    center_y - radius * 0.7 * math.cos(minute_angle)),
+                    fill=minute_color, width=6)
+        draw.line((center_x, center_y,
+                    center_x + radius * 0.85 * math.sin(second_angle),
+                    center_y - radius * 0.85 * math.cos(second_angle)),
+                    fill=second_color, width=4)
+        draw.ellipse((center_x - 5, center_y - 5, center_x + 5, center_y + 5), fill="white")
+    else:
+        time_str = now.strftime("%H:%M:%S")
+        date_str = now.strftime("%A, %B %d, %Y")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        time_bbox = get_cached_text_bbox(time_str, LARGE_FONT)
+        time_width = time_bbox[2] - time_bbox[0]
+        time_height = time_bbox[3] - time_bbox[1]
+        time_x = (SCREEN_WIDTH - time_width) // 2
+        time_y = (SCREEN_HEIGHT - time_height) // 2 - 30
+        date_bbox = get_cached_text_bbox(date_str, MEDIUM_FONT)
+        date_width = date_bbox[2] - date_bbox[0]
+        date_x = (SCREEN_WIDTH - date_width) // 2
+        date_y = time_y + time_height + 20
+        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(img)
+        draw_text_aliased(draw, img, (time_x, time_y), time_str, LARGE_FONT, face_color)
+        draw_text_aliased(draw, img, (date_x, date_y), date_str, MEDIUM_FONT, notch_color)
     return img
 
-def create_fallback_art():
-    img = Image.new("RGB", (64, 64), (40, 40, 40))
-    draw = ImageDraw.Draw(img)
-    try:
-        draw.text((16, 16), "🎵", fill="white", font=SPOT_MEDIUM_FONT)
-    except:
-        draw.text((20, 20), "MUSIC", fill="white", font=SPOT_SMALL_FONT)
-    return img
-FALLBACK_ART = create_fallback_art()
+def setup_spotify_oauth():
+    return SpotifyOAuth(
+        client_id=config["api_keys"]["client_id"],
+        client_secret=config["api_keys"]["client_secret"],
+        redirect_uri=config["api_keys"]["redirect_uri"],
+        scope=SCOPE,
+        cache_path=".spotify_cache"
+    )
 
 def fetch_and_store_artist_image(sp, artist_id):
     global artist_image
@@ -809,7 +851,7 @@ def fetch_and_store_artist_image(sp, artist_id):
         resp.raise_for_status()
         if 'image' not in resp.headers.get('content-type', '').lower(): raise ValueError("Not an image")
         img = Image.open(BytesIO(resp.content)).convert("RGBA")
-        img = img.resize((100, 100), Image.LANCZOS)
+        img = img.resize((100, 100), Image.BILINEAR)
         with artist_image_lock: artist_image = img
     except Exception:
         with artist_image_lock: artist_image = None
@@ -844,17 +886,14 @@ def write_current_track_state(track_data):
     except Exception as e:
         print(f"Error writing track state: {e}")
 
-def spotify_loop():
-    global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache
+def initialize_spotify_client():
     if os.path.exists(".spotify_cache"):
         try:
             with open(".spotify_cache", "r") as f:
                 cache_content = f.read().strip()
                 if not cache_content:
-                    print("⚠️ Spotify cache file is empty")
                     os.remove(".spotify_cache")
-        except Exception as e:
-            print(f"⚠️ Error reading cache file: {e}")
+        except Exception:
             try:
                 os.remove(".spotify_cache")
             except:
@@ -863,26 +902,192 @@ def spotify_loop():
         sp_oauth = setup_spotify_oauth()
         test_token = sp_oauth.get_cached_token()
         if not test_token:
-            print("❌ No valid Spotify token found. Authentication required.")
-            spotify_track = {
-                "title": "Spotify Authentication Required",
-                "artists": "Run setup to authenticate",
-                "album": "HUD35 Setup",
-                "current_position": 0,
-                "duration": 1,
-                "is_playing": False,
-                "main_color": (255, 100, 100),
-                "secondary_color": (200, 100, 100)
-            }
-            update_spotify_layout(spotify_track)
-            if START_SCREEN == "spotify":
-                update_display()
-            return
-    except Exception as e:
-        print(f"❌ Spotify OAuth setup failed: {e}")
+            return None
+    except Exception:
+        return None
+    token_info = sp_oauth.get_cached_token()
+    if not token_info:
+        return None
+    if not isinstance(token_info, dict):
+        try:
+            os.remove(".spotify_cache")
+        except:
+            pass
+        return None
+    if 'access_token' not in token_info:
+        return None
+    if 'expires_at' not in token_info:
+        token_info['expires_at'] = 0
+    expires_at = token_info.get('expires_at', 0)
+    current_time = time.time()
+    if current_time > expires_at - 300:
+        refresh_token = token_info.get('refresh_token')
+        if not refresh_token:
+            try:
+                os.remove(".spotify_cache")
+            except:
+                pass
+            return None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                new_token_info = sp_oauth.refresh_access_token(refresh_token)
+                if new_token_info and 'access_token' in new_token_info:
+                    token_info = new_token_info
+                    break
+                else:
+                    if attempt == max_retries - 1:
+                        raise Exception("Invalid token refresh response")
+            except Exception:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5
+                    time.sleep(wait_time)
+                else:
+                    if 'access_token' in token_info and current_time < expires_at:
+                        pass
+                    else:
+                        return None
+    access_token = token_info.get('access_token')
+    if not access_token:
+        return None
+    return spotipy.Spotify(auth=access_token)
+
+def handle_spotify_error(error, error_count, last_error_time):
+    error_count += 1
+    last_error_time = time.time()
+    if isinstance(error, requests.exceptions.RequestException):
+        if "Connection aborted" in str(error) or "RemoteDisconnected" in str(error):
+            backoff_time = min(60, 5 * error_count)
+        else:
+            backoff_time = min(30, 2 ** error_count)
+        time.sleep(backoff_time)
+    elif isinstance(error, spotipy.exceptions.SpotifyException):
+        if error.http_status == 401:
+            try:
+                os.remove(".spotify_cache")
+            except:
+                pass
+        time.sleep(min(30, 2 ** error_count))
+    else:
+        time.sleep(min(30, 2 ** error_count))
+    return error_count, last_error_time
+
+def extract_track_info(track_data):
+    if not track_data or not track_data.get('item'):
+        return None
+    item = track_data['item']
+    artists_list = [artist['name'] for artist in item.get('artists', [])]
+    artist_str = ", ".join(artists_list) if artists_list else "Unknown Artist"
+    album_str = item['album']['name'] if item.get('album') else "Unknown Album"
+    art_url = None
+    if item.get('album') and item['album'].get('images'):
+        art_url = item['album']['images'][1]['url'] if len(item['album']['images']) > 1 else item['album']['images'][0]['url']
+    return {
+        "id": item.get('id'),
+        "title": item.get('name', "Unknown Track"),
+        "artists": artist_str,
+        "album": album_str,
+        "current_position": track_data.get('progress_ms', 0) // 1000,
+        "duration": item.get('duration_ms', 0) // 1000,
+        "is_playing": track_data.get('is_playing', False),
+        "art_url": art_url,
+        "artist_id": item['artists'][0]['id'] if item.get('artists') and len(item['artists']) > 0 else None
+    }
+
+def load_and_process_album_art(art_url, track_info, last_art_url, last_album_art_hash):
+    global album_art_image, spotify_bg_cache, current_album_art_hash
+    if not art_url or art_url == last_art_url:
+        return last_art_url, last_album_art_hash
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
+        resp = requests.get(art_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        img = Image.open(BytesIO(resp.content)).convert("RGB")
+        img.thumbnail((150, 150), Image.BILINEAR)
+        with art_lock: 
+            album_art_image = img
+        current_img_hash = id(img)
+        if current_img_hash != last_album_art_hash:
+            request_background_generation(img)
+            last_album_art_hash = current_img_hash
+        main_color, secondary_color = get_contrasting_colors(img)
+        track_info['main_color'] = main_color
+        track_info['secondary_color'] = secondary_color
+        last_art_url = art_url
+    except Exception:
+        with art_lock: 
+            album_art_image = None
+        with spotify_bg_cache_lock:
+            spotify_bg_cache = None
+            current_album_art_hash = None
+        track_info['main_color'] = (0, 255, 0)
+        track_info['secondary_color'] = (0, 255, 255)
+        last_art_url = None
+    return last_art_url, last_album_art_hash
+
+def setup_track_display(track_info, last_track_id):
+    global spotify_track, scrolling_text_cache
+    spotify_track = track_info
+    write_current_track_state(spotify_track)
+    update_spotify_layout(spotify_track)
+    scrolling_text_cache.clear()
+    for key in ['title', 'artists', 'album']:
+        data = track_info.get(key, "")
+        if data:
+            text_bbox = get_cached_text_bbox(data, SPOT_MEDIUM_FONT)
+            text_width = text_bbox[2] - text_bbox[0]
+            label_text = "Track:" if key == "title" else "Artists:" if key == "artists" else "Album:"
+            label_bbox = get_cached_text_bbox(label_text, SPOT_MEDIUM_FONT)
+            label_width = label_bbox[2] - label_bbox[0]
+            visible_width = SCREEN_WIDTH - 5 - label_width - 6
+            if text_width > visible_width:
+                scrolling_img = create_scrolling_text_image(data, SPOT_MEDIUM_FONT, track_info['main_color'], text_width * 2 + 50)
+                scrolling_text_cache[key] = scrolling_img
+                with scroll_lock:
+                    scroll_state[key]["active"] = True
+                    scroll_state[key]["max_offset"] = text_width + 50
+                    scroll_state[key]["offset"] = 0
+            else:
+                with scroll_lock:
+                    scroll_state[key]["active"] = False
+                    scroll_state[key]["max_offset"] = 0
+                    scroll_state[key]["offset"] = 0
+    if track_info.get('artist_id'):
+        Thread(target=fetch_and_store_artist_image, args=(sp, track_info['artist_id']), daemon=True).start()
+    if START_SCREEN == "spotify":
+        update_display()
+    return track_info['id']
+
+def update_existing_track_progress(track_data):
+    global spotify_track
+    if not spotify_track:
+        return
+    old_position = spotify_track.get('current_position', 0)
+    new_position = track_data.get('progress_ms', 0) // 1000
+    spotify_track['current_position'] = new_position
+    spotify_track['is_playing'] = track_data.get('is_playing', False)
+    position_diff = abs(new_position - old_position)
+    if position_diff >= 5 or spotify_track['is_playing'] != track_data.get('is_playing', False):
+        write_current_track_state(spotify_track)
+
+def clear_track_state():
+    global spotify_track
+    spotify_track = None
+    with art_lock: 
+        album_art_image = None
+    write_current_track_state(None)
+    update_spotify_layout(None)
+    if START_SCREEN == "spotify":
+        update_display()
+
+def spotify_loop():
+    global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache
+    global spotify_bg_cache, current_album_art_hash
+    sp = initialize_spotify_client()
+    if sp is None:
         spotify_track = {
-            "title": "Spotify Setup Error",
-            "artists": "Check configuration",
+            "title": "Spotify Authentication Required",
+            "artists": "Run setup to authenticate",
             "album": "HUD35 Setup",
             "current_position": 0,
             "duration": 1,
@@ -894,258 +1099,49 @@ def spotify_loop():
         if START_SCREEN == "spotify":
             update_display()
         return
-    def get_spotify_client():
-        nonlocal token_info
-        try:
-            current_token = sp_oauth.get_cached_token()
-            if not current_token:
-                print("❌ No cached token found. Re-authentication required.")
-                return None
-            if not isinstance(current_token, dict):
-                print("⚠️ Token is not in dictionary format, attempting to use raw token...")
-                print("❌ Cannot determine token expiration for raw token, requiring refresh")
-                try:
-                    if os.path.exists(".spotify_cache"):
-                        os.remove(".spotify_cache")
-                except:
-                    pass
-                return None
-            else:
-                token_info = current_token
-            if 'access_token' not in token_info:
-                print("❌ Invalid token structure - missing access_token")
-                return None
-            if 'expires_at' not in token_info:
-                print("❌ Invalid token structure - missing expires_at")
-                token_info['expires_at'] = 0
-            expires_at = token_info.get('expires_at', 0)
-            current_time = time.time()
-            time_remaining = expires_at - current_time
-            if time_remaining <= 120:
-                print(f"🔑 Token expires in {int(time_remaining)} seconds")
-            if current_time > expires_at - 300:
-                print(f"🔄 Token needs refresh ({int(time_remaining)} seconds remaining)")
-                refresh_token = token_info.get('refresh_token')
-                if not refresh_token:
-                    print("❌ No refresh token available. Re-authentication required.")
-                    try:
-                        if os.path.exists(".spotify_cache"):
-                            os.remove(".spotify_cache")
-                    except:
-                        pass
-                    return None
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        print(f"🔄 Refreshing Spotify token (attempt {attempt + 1}/{max_retries})...")
-                        new_token_info = sp_oauth.refresh_access_token(refresh_token)
-                        if new_token_info and 'access_token' in new_token_info:
-                            token_info = new_token_info
-                            new_expires_in = token_info.get('expires_in', 3600)
-                            print(f"✅ Spotify token refreshed successfully, expires in {new_expires_in} seconds")
-                            break
-                        else:
-                            print(f"❌ Invalid response from token refresh (attempt {attempt + 1})")
-                            if attempt == max_retries - 1:
-                                raise Exception("Invalid token refresh response")
-                    except Exception as e:
-                        print(f"❌ Token refresh failed (attempt {attempt + 1}): {e}")
-                        if attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 5
-                            print(f"⏳ Waiting {wait_time} seconds before retry...")
-                            time.sleep(wait_time)
-                        else:
-                            print("❌ All refresh attempts failed")
-                            if 'access_token' in token_info and current_time < expires_at:
-                                print("⚠️ Using existing token despite refresh failure")
-                            else:
-                                return None
-            access_token = token_info.get('access_token')
-            if not access_token:
-                print("❌ No access token available")
-                return None
-            return spotipy.Spotify(auth=access_token)
-        except Exception as e:
-            print(f"❌ Error in get_spotify_client: {e}")
-            return None
-    token_info = sp_oauth.get_cached_token()
-    sp = get_spotify_client()
-    if sp is None:
-        print("Failed to initialize Spotify client.")
-        return
     last_track_id = None
     spotify_error_count = 0
     last_art_url = None
     last_error_time = None
     initial_token_logged = False
-    print("🎵 Spotify loop started successfully")
+    last_album_art_hash = None
     while not exit_event.is_set():
         try:
-            sp = get_spotify_client()
-            if sp is None:
-                print("🔄 No Spotify client available, waiting to retry...")
-                time.sleep(10)
-                continue
-            if not initial_token_logged:
-                current_token = sp_oauth.get_cached_token()
-                if current_token and isinstance(current_token, dict):
-                    expires_at = current_token.get('expires_at', 0)
-                    current_time = time.time()
-                    time_remaining = expires_at - current_time
-                    if time_remaining > 0:
-                        print(f"🔑 Initial token expires in {int(time_remaining)} seconds")
+            current_token = setup_spotify_oauth().get_cached_token()
+            if not initial_token_logged and current_token and isinstance(current_token, dict):
+                expires_at = current_token.get('expires_at', 0)
+                current_time = time.time()
+                time_remaining = expires_at - current_time
                 initial_token_logged = True
             track = sp.current_user_playing_track()
             if not track or not track.get('item'):
                 if spotify_track is not None:
-                    spotify_track = None
-                    with art_lock: 
-                        album_art_image = None
-                    with artist_image_lock: 
-                        artist_image = None
-                    write_current_track_state(None)
-                    update_spotify_layout(None)
-                    if START_SCREEN == "spotify":
-                        update_display()
+                    clear_track_state()
                 time.sleep(SPOTIFY_UPDATE_INTERVAL)
                 continue
             if spotify_error_count > 0 and last_error_time is not None:
                 if time.time() - last_error_time > 300:
-                    print("✅ 5 minutes without errors, resetting error count")
                     spotify_error_count = 0
                     last_error_time = None
-            item = track['item']
-            current_id = item.get('id')
-            artists_list = [artist['name'] for artist in item.get('artists', [])]
-            artist_str = ", ".join(artists_list) if artists_list else "Unknown Artist"
-            album_str = item['album']['name'] if item.get('album') else "Unknown Album"
-            current_position = track.get('progress_ms', 0) // 1000
-            duration = item.get('duration_ms', 0) // 1000
-            new_track = {
-                "title": item.get('name', "Unknown Track"),
-                "artists": artist_str,
-                "album": album_str,
-                "current_position": current_position,
-                "duration": duration,
-                "is_playing": track.get('is_playing', False)
-            }
-            art_url = None
-            if item.get('album') and item['album'].get('images'):
-                art_url = item['album']['images'][0]['url']
-            force_reload_art = (current_id != last_track_id or 
-                            spotify_track is None or 
-                            art_url != last_art_url)
-            if current_id != last_track_id or spotify_track is None or force_reload_art:
-                spotify_track = new_track
-                write_current_track_state(spotify_track)
-                try:
-                    if art_url:
-                        headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}
-                        resp = requests.get(art_url, headers=headers, timeout=10)
-                        resp.raise_for_status()
-                        img = Image.open(BytesIO(resp.content)).convert("RGB")
-                        img.thumbnail((150, 150), Image.LANCZOS)
-                        with art_lock: 
-                            album_art_image = img
-                        album_bg_cache.clear()
-                        main_color, secondary_color = get_contrasting_colors(img)
-                        spotify_track['main_color'] = main_color
-                        spotify_track['secondary_color'] = secondary_color
-                    else:
-                        with art_lock: 
-                            album_art_image = None
-                        spotify_track['main_color'] = (0, 255, 0)
-                        spotify_track['secondary_color'] = (0, 255, 255)
-                    last_art_url = art_url
-                except Exception as e:
-                    print(f"❌ Error loading album art: {e}")
-                    with art_lock: 
-                        album_art_image = None
-                    spotify_track['main_color'] = (0, 255, 0)
-                    spotify_track['secondary_color'] = (0, 255, 255)
-                update_spotify_layout(spotify_track)
-                scrolling_text_cache.clear()
-                for key in ['title', 'artists', 'album']:
-                    data = new_track.get(key, "")
-                    if data:
-                        text_bbox = get_cached_text_bbox(data, SPOT_MEDIUM_FONT)
-                        text_width = text_bbox[2] - text_bbox[0]
-                        label_text = "Track:" if key == "title" else "Artists:" if key == "artists" else "Album:"
-                        label_bbox = get_cached_text_bbox(label_text, SPOT_MEDIUM_FONT)
-                        label_width = label_bbox[2] - label_bbox[0]
-                        visible_width = SCREEN_WIDTH - 5 - label_width - 6
-                        if text_width > visible_width:
-                            scrolling_img = create_scrolling_text_image(data, SPOT_MEDIUM_FONT, spotify_track['main_color'], text_width * 2 + 50)
-                            scrolling_text_cache[key] = scrolling_img
-                            with scroll_lock:
-                                scroll_state[key]["active"] = True
-                                scroll_state[key]["max_offset"] = text_width + 50
-                                scroll_state[key]["offset"] = 0
-                        else:
-                            with scroll_lock:
-                                scroll_state[key]["active"] = False
-                                scroll_state[key]["max_offset"] = 0
-                                scroll_state[key]["offset"] = 0
-                if item.get('artists') and len(item['artists']) > 0:
-                    primary_artist_id = item['artists'][0]['id']
-                    Thread(target=fetch_and_store_artist_image, args=(sp, primary_artist_id), daemon=True).start()
-                last_track_id = current_id
-                if START_SCREEN == "spotify":
-                    update_display()
+            track_info = extract_track_info(track)
+            if track_info['id'] != last_track_id or spotify_track is None:
+                last_art_url, last_album_art_hash = load_and_process_album_art(
+                    track_info['art_url'], track_info, last_art_url, last_album_art_hash
+                )
+                last_track_id = setup_track_display(track_info, last_track_id)
             else:
-                old_position = spotify_track.get('current_position', 0) if spotify_track else 0
-                new_position = track.get('progress_ms', 0) // 1000
-                spotify_track['current_position'] = new_position
-                spotify_track['is_playing'] = track.get('is_playing', False)
-                position_diff = abs(new_position - old_position)
-                if position_diff >= 5 or spotify_track['is_playing'] != track.get('is_playing', False):
+                update_existing_track_progress(track)
+            if spotify_track and spotify_track.get('is_playing', False):
+                current_time = time.time()
+                if not hasattr(spotify_loop, 'last_track_write') or current_time - spotify_loop.last_track_write > 30:
                     write_current_track_state(spotify_track)
-        except requests.exceptions.RequestException as e:
-            spotify_error_count += 1
-            last_error_time = time.time()
-            print(f"🌐 Network error ({spotify_error_count}): {e}")
-            if "Connection aborted" in str(e) or "RemoteDisconnected" in str(e):
-                backoff_time = min(60, 5 * spotify_error_count)
-            else:
-                backoff_time = min(30, 2 ** spotify_error_count)
-            print(f"⏳ Waiting {backoff_time} seconds before retry...")
-            time.sleep(backoff_time)
-        except spotipy.exceptions.SpotifyException as e:
-            spotify_error_count += 1
-            last_error_time = time.time()
-            print(f"🎵 Spotify API error ({spotify_error_count}): {e}")
-            if e.http_status == 401:
-                print("🔑 Spotify token expired, requiring re-authentication")
-                try:
-                    os.remove(".spotify_cache")
-                except:
-                    pass
-                spotify_track = None
-                update_spotify_layout(None)
-                if START_SCREEN == "spotify":
-                    update_display()
-                spotify_error_count = 0
-            time.sleep(min(30, 2 ** spotify_error_count))
+                    spotify_loop.last_track_write = current_time
         except Exception as e:
-            spotify_error_count += 1
-            last_error_time = time.time()
-            print(f"❌ Unexpected Spotify error ({spotify_error_count}): {e}")
-            time.sleep(min(30, 2 ** spotify_error_count))
-        if spotify_error_count >= 5:
-            print("⚠️ Too many Spotify errors, showing error state")
-            spotify_track = None
-            with art_lock: 
-                album_art_image = None
-            update_spotify_layout(None)
-            if START_SCREEN == "spotify":
-                update_display()
+            spotify_error_count, last_error_time = handle_spotify_error(e, spotify_error_count, last_error_time)
             if spotify_error_count >= 5:
-                spotify_error_count = 0
-        if spotify_track and spotify_track.get('is_playing', False):
-            current_time = time.time()
-            if not hasattr(spotify_loop, 'last_track_write') or current_time - spotify_loop.last_track_write:
-                write_current_track_state(spotify_track)
-                spotify_loop.last_track_write = current_time
+                clear_track_state()
+                if spotify_error_count >= 5:
+                    spotify_error_count = 0
         time.sleep(SPOTIFY_UPDATE_INTERVAL)
 
 def weather_loop():
@@ -1282,7 +1278,7 @@ def display_image_on_st7789(image):
         if st7789_display is None:
             st7789_display = init_st7789_display()
             if st7789_display is None: return
-        scaled_image = image.resize((320, 240), Image.LANCZOS)
+        scaled_image = image.resize((320, 240), Image.BILINEAR)
         if scaled_image.mode != "RGB": 
             scaled_image = scaled_image.convert("RGB")
         st7789_display.display(scaled_image)
@@ -1438,7 +1434,7 @@ def draw_waveshare_simple(weather_info, spotify_track):
                 resp = requests.get(icon_url, timeout=5)
                 resp.raise_for_status()
                 icon_img = Image.open(BytesIO(resp.content)).convert("RGBA")
-                icon_img = icon_img.resize((40, 40), Image.LANCZOS)
+                icon_img = icon_img.resize((40, 40), Image.BILINEAR)
                 icon_img_bw = icon_img.convert('1')
                 img.paste(icon_img_bw, (display_width - 45, 30))
             except Exception as e:
@@ -1475,7 +1471,7 @@ def display_image_on_waveshare(image):
                 return
         try:
             if image.size != (250, 122):
-                image = image.resize((250, 122), Image.LANCZOS)
+                image = image.resize((250, 122), Image.BILINEAR)
             waveshare_epd.display(waveshare_epd.getbuffer(image))
             waveshare_base_image = image.copy()
             partial_refresh_count = 0
@@ -1519,19 +1515,6 @@ def update_display():
             img = draw_clock_image()
     display_image_on_framebuffer(img)
 
-def reset_waveshare_display():
-    global waveshare_epd, waveshare_base_image, partial_refresh_count
-    with waveshare_lock:
-        try:
-            if waveshare_epd:
-                waveshare_epd.init()
-                waveshare_epd.Clear(0xFF)
-                waveshare_base_image = None
-                partial_refresh_count = 0
-                print("Waveshare display reset")
-        except Exception as e:
-            print(f"Error resetting waveshare: {e}")
-
 def clear_framebuffer():
     display_type = config.get("display", {}).get("type", "framebuffer")
     if display_type == "st7789" and HAS_ST7789 and st7789_display:
@@ -1544,7 +1527,7 @@ def clear_framebuffer():
     else:
         with open(FRAMEBUFFER, "wb") as f:
             f.write(b'\x00\x00' * SCREEN_AREA)
-            
+
 def capture_frames_background():
     time.sleep(30)
     print("📸 Starting non-blocking frame capture...")
@@ -1567,6 +1550,7 @@ def capture_frames_background():
     print("⏹️ Capture complete.")
 
 def main():
+    Thread(target=background_generation_worker, daemon=True).start()
     Thread(target=weather_loop, daemon=True).start()
     Thread(target=spotify_loop, daemon=True).start()
     Thread(target=handle_touch, daemon=True).start()
@@ -1574,10 +1558,6 @@ def main():
     Thread(target=animate_images, daemon=True).start()
     Thread(target=animate_text_scroll, daemon=True).start()
     #Thread(target=capture_frames_background, daemon=True).start()
-    for _ in range(30):
-        if weather_info is not None or spotify_track is not None:
-            break
-        time.sleep(0.1)
     update_display()
     try:
         while not exit_event.is_set():

@@ -2211,6 +2211,42 @@ def advanced_config():
                 </div>
             </div>
             <div class="section">
+                <h2>🕒 Clock Appearance</h2>
+                <div class="config-grid">
+                    <div>
+                        <h3>Clock Type</h3>
+                        <div class="form-group">
+                            <label for="clock_type">Clock Type:</label>
+                            <select id="clock_type" name="clock_type">
+                                <option value="digital" {% if config.clock.type == "digital" %}selected{% endif %}>Digital</option>
+                                <option value="analog" {% if config.clock.type == "analog" %}selected{% endif %}>Analog</option>
+                            </select>
+                            <small>CLock display type.</small>
+                        </div>
+                    </div>
+                    <div>
+                        <h3>Clock Background</h3>
+                        <div class="form-group">
+                            <label for="clock_background">Background Mode:</label>
+                            <select id="clock_background" name="clock_background">
+                                <option value="color" {% if config.clock.background == "color" %}selected{% endif %}>Color</option>
+                                <option value="album" {% if config.clock.background == "album" %}selected{% endif %}>Album Art</option>
+                                <option value="weather" {% if config.clock.background == "weather" %}selected{% endif %}>Weather</option>
+                            </select>
+                            <small>Select background source for the clock display</small>
+                        </div>
+                    </div>
+                    <div>
+                        <br>
+                        <div class="form-group">
+                            <label for="clock_color">Base Color (Hex or name):</label>
+                            <input type="text" id="clock_color" name="clock_color" value="{{ config.clock.color }}" placeholder="#00FFFF or cyan">
+                            <small>Used for color mode or fallback background</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="section">
                 <h2>🔤 Font Configuration</h2>
                 <div class="font-config">
                     <div class="font-group">
@@ -2434,8 +2470,17 @@ def save_advanced_config():
         config["settings"]["use_google_geo"] = 'use_google_geo' in request.form
         config["settings"]["enable_current_track_display"] = 'enable_current_track_display' in request.form
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000')
+        config["clock"]["background"] = request.form.get('clock_background', 'color')
+        config["clock"]["color"] = request.form.get('clock_color', '#000000')
+        config["clock"]["type"] = request.form.get('clock_type', 'digital')
         save_config(config)
         flash('success', 'Advanced configuration saved successfully!')
+        if is_hud35_running():
+            stop_hud35()
+            start_hud35()
+        if is_neonwifi_running():
+            stop_neonwifi()
+            start_neonwifi()
     except Exception as e:
         flash('error', f'Error saving configuration: {str(e)}')
     return redirect(url_for('advanced_config'))
