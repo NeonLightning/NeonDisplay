@@ -1,47 +1,55 @@
 # HUD35 Display System
 
-A Raspberry Pi-based display system that shows weather information and currently playing Spotify tracks on a 3.5"tft or st7789 display hat mini screen. Features automatic background switching based on weather conditions, animated album art, touch screen controls, and a comprehensive web-based management interface.
+A Raspberry Pi-based display system that shows weather information, currently playing Spotify tracks, and time displays on various screen types. Features automatic background switching based on weather conditions, animated album art, multiple input controls, and a comprehensive web-based management interface.
 
 ![Screenshots](screenshots)
-
+## ✨ Key Features
 
 ### 🎵 Enhanced Music Statistics & Analytics
 - **Comprehensive Tracking**: Automatically logs every song played with timestamps
 - **Visual Charts**: Interactive bar charts showing top songs and artists
-- **Time Period Filtering**: View statistics for:
-  - Last 1 hour
-  - Last 12 hours  
-  - Last 24 hours
-  - Last 1 week
-  - All time
 - **Real-time Updates**: Statistics update automatically as you listen
-- **Data Export**: Song history stored in TOML format for easy analysis
+- **Current Track Display**: Live view of currently playing track with progress bar
+- **Data Management**: Clear song history and export capabilities
+
+### 🌤️ Multi-Screen Display System
+- **Weather Screen**: Current conditions, temperature, humidity, pressure, and wind
+- **Spotify Screen**: Now playing with album art, artist images, and progress tracking
+- **Clock Screen**: Analog or digital clock with customizable backgrounds
+- **Automatic Backgrounds**: Dynamic backgrounds based on weather conditions or album art
 
 ### 🎨 Advanced Display Features
-- **Animated Artist Images**: Artist photos bounce around the display alongside album art
+- **Multiple Display Support**:
+  - **ST7789** (DisplayHat Mini)
+  - **Framebuffer** (Standard TFT 3.5" SPI displays) 
+  - **Waveshare E-Paper** (2.13" V3/V4 e-ink displays)
+- **Animated Elements**: Album art and artist images with bouncing animation
+- **Scrolling Text**: Automatic scrolling for long song titles and artist names
+- **Custom Fonts**: Configurable font sizes and paths for different display types
 
-### 🎮 Improved Input Controls
+### 🎮 Multiple Input Methods
+- **Touch Screen**: Tap anywhere to cycle through screens (weather → spotify → time)
 - **4-Button GPIO Support**: Physical buttons for enhanced control:
   - **Button A**: Switch to Spotify screen
   - **Button B**: Switch to Weather screen  
-  - **Button X**: Reset image positions
+  - **Button X**: Reset image positions (clock screen)
   - **Button Y**: Toggle time display on/off
-- **Touch Screen**: Tap anywhere to toggle between weather and Spotify views
+- **Configurable GPIO**: Customizable button pins in configuration
 
 ### ⚙️ Enhanced Configuration & Management
-- **Web-Based Configuration UI**: Complete setup via browser interface
+- **Web-Based Configuration UI**: Complete setup via browser interface at `http://your-pi-ip:5000`
 - **Real-time Service Control**: Start/stop HUD35 and WiFi manager from web UI
 - **Live Log Viewer**: Monitor application logs with color-coded output and live updates
 - **Theme Support**: Toggle between light and dark modes in web interface
-- **Auto-start Configuration**: Configure which services start automatically on boot
+- **Auto-start Configuration**: Configure which parts start automatically on load
 
 ### 🌐 Network & Connectivity
 - **Multiple Location Services**: Fallback chain for location detection:
   1. GPSD (hardware GPS)
-  2. Google Geolocation API(optional)
+  2. Google Geolocation API
   3. OpenWeatherMap Geocoding
   4. Manual fallback city
-- **WiFi Management**: Built-in access point mode for easy network configuration
+- **WiFi Management**: Built-in access point mode for easy network configuration via `neonwifi.py`
 - **Internet Detection**: Smart startup that waits for internet connectivity
 
 ### 🎵 Spotify Integration Enhancements
@@ -49,44 +57,132 @@ A Raspberry Pi-based display system that shows weather information and currently
 - **Error Recovery**: Automatic reconnection on network errors
 - **Artist Image Fetching**: Displays artist photos alongside album art
 - **Progress Tracking**: Real-time song progress with formatted time display
+- **Background Generation**: Dynamic backgrounds generated from album art colors
 
-## Installation & Setup
+### 🕒 Clock Display Options
+- **Multiple Clock Types**: Analog or digital clock display
+- **Customizable Backgrounds**:
+  - Solid color
+  - Album art-based
+  - Weather-based backgrounds
+- **Color Schemes**: Automatic contrasting colors based on background
 
-### Quick Installation
+## 🚀 Installation & Setup
 ```bash
-# Run the automated installer
-chmod +x install.sh
-sudo ./install.sh
+# Install system dependencies
+sudo apt update
+sudo apt install python3-pip python3-evdev python3-numpy python3-pil python3-flask
+
+# Install Python packages
+sudo pip3 install spotipy toml requests --break-system-packages
+
+# For ST7789 displays (DisplayHat Mini)
+sudo pip3 install st7789 --break-system-packages
+
+# For Waveshare E-Paper displays
+sudo pip3 install eink-wave --break-system-packages
+
 ```
 
-The installer now includes:
-- Automatic dependency checking
-- Systemd service configuration
-- File permissions setup
-- Web interface activation
+### Display Setup
 
-### Web Configuration
+#### For 3.5" TFT Displays:
+```bash
+git clone https://github.com/Shinigamy19/RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046
+mv RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046 LCD-show
+cd LCD-show
+chmod +x LCD35-show
+sudo ./LCD35-show
+```
+
+#### For DisplayHat Mini (ST7789):
+- No additional drivers needed - uses ST7789 Python library
+
+#### For Waveshare E-Paper:
+- Ensure proper SPI configuration
+- Check display compatibility with waveshare_epd library
+- use waveshare/epdconfig.py in folder /usr/local/lib/python3.11/dist-packages/waveshare_epd/epdconfig.py
+
+## ⚙️ Configuration
+
+### Web Configuration Interface
 After installation, access the web interface:
 ```bash
-http://your-pi-ip:5000
+http://your-pi-ip-address:5000
 ```
 
-## Hardware Support
+The web interface provides:
+- **API Key Setup**: OpenWeatherMap, Google Geolocation, Spotify
+- **Display Configuration**: Screen type, rotation, fonts
+- **Service Management**: Start/stop HUD35 and WiFi manager
+- **Music Statistics**: View listening history and charts
+- **Advanced Settings**: Button mapping, clock options, auto-start
 
-### Supported Displays
-- **ST7789** (DisplayHat Mini)
-- **Framebuffer** (Standard TFT 3.5" SPI displays)
+### Manual Configuration
+Edit `config.toml` for advanced settings:
 
-### GPIO Button Mapping
-The system supports 4 physical buttons connected to GPIO pins:
-- Button A: GPIO 5
-- Button B: GPIO 6  
-- Button X: GPIO 16
-- Button Y: GPIO 24
+## 🎮 Usage
 
-*Configurable via `config.toml`*
+### Starting the System
 
-## Music Statistics Features
+```bash
+python3 launcher.py
+```
+
+#### Auto-start (via web interface):
+- Configure auto-start in web UI
+
+### Physical Controls
+- **Touch Screen**: Tap to cycle through display screens
+- **Button A**: Show Spotify screen
+- **Button B**: Show Weather screen  
+- **Button X**: Reset animations (on clock screen)
+- **Button Y**: Toggle time display
+
+### Web Interface Features
+
+#### Main Dashboard (`http://your-pi-ip:5000`)
+- Service status and control
+- Auto-start configuration
+- Quick access to music statistics and logs
+
+#### Music Statistics (`http://your-pi-ip:5000/music_stats`)
+- Interactive charts of top songs and artists
+- Current track display with progress
+- Data export and clearing options
+
+#### Advanced Configuration (`http://your-pi-ip:5000/advanced_config`)
+- Complete system configuration
+- Display settings, fonts, button mapping
+- API key management
+- Clock and appearance options
+
+#### Log Viewer (`http://your-pi-ip:5000/view_logs`)
+- Real-time log monitoring
+- Color-coded log levels
+- Live updates and filtering
+
+## 🔧 Service Management
+
+### System Commands
+```bash
+# Start via launcher
+python3 launcher.py
+
+# Start HUD35 display only
+python3 hud35.py
+
+# Start WiFi manager only  
+python3 neonwifi.py
+```
+
+### WiFi Management
+The system includes `neonwifi.py` for network configuration:
+- Creates access point "Neonwifi-Manager" when no WiFi connected
+- Web interface at `http://192.168.42.1` for WiFi setup
+- Automatic fallback to AP mode when disconnected
+
+## 🎵 Music Statistics Features
 
 ### 📊 Analytics Dashboard
 - **Total Plays Counter**: Track how many songs you've played
@@ -95,48 +191,38 @@ The system supports 4 physical buttons connected to GPIO pins:
   - Most played songs with play counts
   - Most listened-to artists
 - **Visual Analytics**: Color-coded bar charts showing listening patterns
-
-## Service Management
-
-### New Web Controls
-- **One-click Service Control**: Start/stop HUD35 and WiFi manager
-- **Real-time Status**: Live status indicators for all services
-- **Log Management**: View and clear application logs
-
-### System Commands
-```bash
-# Start service
-sudo systemctl start hud35.service
-
-# Stop service  
-sudo systemctl stop hud35.service
-
-# Check status
-sudo systemctl status hud35.service
-
-# View logs
-sudo journalctl -u hud35.service -f
-```
+- **Live Updates**: Real-time tracking as you listen
 
 ### Accessing Music Statistics
 1. Open web interface: `http://your-pi-ip:5000`
 2. Click "Music Statistics" button
-3. Select time period and number of items to display
-4. View interactive charts of your listening habits
+3. View interactive charts of your listening habits
 
-### Using Physical Buttons
-- **Quick screen switch**: Press A/B buttons
-- **Reset animations**: Press X to reset image positions
-- **Toggle clock**: Press Y to show/hide time display
+### Logging and Debugging
+- Use the web-based log viewer for real-time monitoring
+- Check `hud35.log` for detailed application logs
+- Enable debug mode in configuration for detailed output
 
-## Troubleshooting
-- **Web-based log viewer**: Access logs without terminal
-- **Service status indicators**: Visual indicators of service health
-- **Auto-recovery**: Services automatically restart on failure
-- **Configuration validation**: Web UI validates API keys and settings
+## 📁 File Structure
 
-## Uninstallation
-
-```bash
-sudo /opt/hud35/uninstall.sh
 ```
+hud35/
+├── hud35.py              # Main display application
+├── launcher.py           # Web management interface
+├── neonwifi.py           # WiFi management
+├── config.toml           # Configuration file
+├── .spotify_cache        # Spotify authentication cache
+├── hud35.log            # Application logs
+├── song_counts.toml     # Music statistics data
+└── bg/                  # Background images directory
+    ├── bg_clear.png
+    ├── bg_clouds.png
+    └── ...
+```
+## 📄 License
+
+This project is open source. See LICENSE file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
