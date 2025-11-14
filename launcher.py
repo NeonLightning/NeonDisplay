@@ -379,6 +379,7 @@ def index():
     spotify_authenticated, _ = check_spotify_auth()
     hud35_running = is_hud35_running()
     neonwifi_running = is_neonwifi_running()
+    enable_current_track = config["settings"].get("enable_current_track_display", True)
     return render_template(
         'setup.html', 
         config=config, 
@@ -388,6 +389,7 @@ def index():
         hud35_running=hud35_running,
         neonwifi_running=neonwifi_running,
         auto_config=auto_config,
+        enable_current_track_display=enable_current_track,
         ui_config=ui_config
     )
 
@@ -607,7 +609,6 @@ def music_stats():
     total_plays = sum(song_counts.values())
     unique_songs = len(song_counts)
     unique_artists = len(artist_stats)
-    enable_current_track = config["settings"].get("enable_current_track_display", True)
     return render_template('music_stats.html', 
                         song_chart_items=song_chart_items,
                         artist_chart_items=artist_chart_items,
@@ -615,7 +616,6 @@ def music_stats():
                         total_plays=total_plays,
                         unique_songs=unique_songs,
                         unique_artists=unique_artists,
-                        enable_current_track_display=enable_current_track,
                         ui_config=ui_config)
 
 @app.route('/stream/current_track')
