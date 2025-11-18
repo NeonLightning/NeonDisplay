@@ -1,20 +1,11 @@
-sudo apt install python3-pip python3-evdev python3-numpy python3-pil
-sudo pip3 install spotipy --break-system-packages
-(for wifi system) sudo apt install python3-flask
-
-
-for 3.5" tft
+sudo apt install python3-pip python3-evdev python3-numpy python3-pil python3-flask
+sudo pip install spotipy st7789 eink-wave --break-system-packages
+sudo pip uninstall numpy --break-system-packages
+sudo cp ./waveshare/epdconfig.py /usr/local/lib/python3.11/dist-packages/waveshare_epd/epdconfig.py
 git clone https://github.com/Shinigamy19/RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046
 mv RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046 LCD-show
 cd LCD-show
-chmod +x LCD35-show
+chmod +x ./*
 sudo ./LCD35-show
 (optional) sudo bash ./rotate.sh 180
-
-for display hat mini
-sudo pip3 install st7789 --break-system-packages
-
-for waveshare v3 or v4
-(unknown if needed currently)sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
-sudo pip3 install eink-wave --break-system-packages
-use waveshare/epdconfig.py in folder /usr/local/lib/python3.11/dist-packages/waveshare_epd/epdconfig.py
+(might need for waveshare)sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
