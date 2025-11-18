@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-import time, requests, json, evdev, spotipy, colorsys, datetime, os, subprocess, toml, random, sys, copy, math, queue, threading, signal
-import  numpy as np
+import time, requests, json, evdev, spotipy, colorsys, datetime, os, subprocess, toml, random, sys, copy, math, queue, threading, signal, numpy as np
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageStat, ImageColor
 from threading import Thread, Event, RLock

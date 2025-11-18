@@ -29,9 +29,9 @@ system-deps:
 	sudo apt update
 	sudo apt install -y python3-pip python3-venv
 	# Install only system libraries needed for Python package compilation
-	sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev
+	sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev git
 	sudo apt install -y liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
-	sudo apt install -y libatlas-base-dev libgfortran5 libopenblas-dev
+	sudo apt install -y libopenblas-dev libcairo2-dev libdbus-1-dev
 	@echo "$(GREEN)System dependencies installed$(NC)"
 
 # Create virtual environment and install ALL Python packages via pip
