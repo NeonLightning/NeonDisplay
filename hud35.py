@@ -60,6 +60,7 @@ DEFAULT_CONFIG = {
         "redirect_uri": "http://127.0.0.1:5000"
     },
     "settings": {
+        "sleep_timeout": 300,
         "framebuffer": "/dev/fb1",
         "start_screen": "weather",
         "fallback_city": "",
@@ -136,6 +137,8 @@ scrolling_text_cache = {}
 last_display_time = 0
 waveshare_lock = RLock()
 file_write_lock = threading.Lock()
+last_activity_time = time.time()
+display_sleeping = False
 
 def load_config(path="config.toml"):
     if not os.path.exists(path):
@@ -177,6 +180,7 @@ if config["display"]["type"] == "st7789":
         HAS_ST7789 = True
     except ImportError:
         HAS_ST7789 = False
+SLEEP_TIMEOUT = 300
 LARGE_FONT = ImageFont.truetype(config["fonts"]["large_font_path"], config["fonts"]["large_font_size"])
 MEDIUM_FONT = ImageFont.truetype(config["fonts"]["medium_font_path"], config["fonts"]["medium_font_size"])
 SMALL_FONT = ImageFont.truetype(config["fonts"]["small_font_path"], config["fonts"]["small_font_size"])
@@ -208,6 +212,7 @@ DEBOUNCE_TIME = 0.3
 UPDATE_INTERVAL_WEATHER = 3600
 GEO_UPDATE_INTERVAL = 900
 TOKEN_CHECK_INTERVAL = 150
+SLEEP_TIMEOUT = config["settings"]["sleep_timeout"]
 
 def get_cached_bg(bg_path, size):
     key = (bg_path, size)
@@ -592,6 +597,8 @@ def create_scrolling_text_image(text, font, color, total_width):
 
 def draw_spotify_image(spotify_track):
     global album_art_image, artist_image, artist_on_top
+    if display_sleeping:
+        return Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), "black")
     with art_lock:
         art_img = album_art_image
     bg_to_use = None
@@ -1235,6 +1242,7 @@ def spotify_loop():
             art_changed = art_url != last_art_url
             if track_changed or art_changed or spotify_track is None:
                 spotify_track = new_track
+                update_activity()
                 if current_time - last_successful_write >= write_interval:
                     write_current_track_state(spotify_track)
                     last_successful_write = current_time
@@ -1313,6 +1321,8 @@ def spotify_loop():
                 spotify_track['current_position'] = current_position
                 spotify_track['is_playing'] = is_playing
                 playing_state_changed = is_playing != old_playing_state
+                if playing_state_changed and is_playing:
+                    update_activity()
                 should_write = False
                 if playing_state_changed:
                     should_write = True
@@ -1549,6 +1559,7 @@ def handle_touch():
         if event.type == evdev.ecodes.EV_KEY and event.code == evdev.ecodes.BTN_TOUCH and event.value == 1:
             current_index = screen_order.index(START_SCREEN)
             START_SCREEN = screen_order[(current_index + 1) % len(screen_order)]
+            update_activity()
             update_display()
 
 def handle_buttons():
@@ -1578,6 +1589,7 @@ def handle_buttons():
                     current_time = time.time()
                     if current_time - button_last_press[button] > DEBOUNCE_TIME:
                         button_last_press[button] = current_time
+                        update_activity()
                         if button == BUTTON_A:
                             START_SCREEN = "spotify"
                             update_display()
@@ -1831,6 +1843,24 @@ def capture_frames_background():
         time.sleep(0.5)
     print("⏹️ Capture complete.")
 
+def update_activity():
+    global last_activity_time, display_sleeping
+    last_activity_time = time.time()
+    if display_sleeping:
+        display_sleeping = False
+
+def check_display_sleep():
+    global display_sleeping, START_SCREEN
+    if START_SCREEN != "spotify" or (spotify_track and spotify_track.get('is_playing', False)):
+        update_activity()
+        return False
+    if time.time() - last_activity_time >= SLEEP_TIMEOUT and not display_sleeping:
+        sleep_timeout = SLEEP_TIMEOUT
+        print(f"🛑 Display sleeping due to {sleep_timeout}s inactivity")
+        display_sleeping = True
+        return True
+    return display_sleeping
+
 def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
@@ -1845,6 +1875,7 @@ def main():
     update_display()
     try:
         while not exit_event.is_set():
+            check_display_sleep()
             update_display()
             time.sleep(0.1)
     except KeyboardInterrupt:
