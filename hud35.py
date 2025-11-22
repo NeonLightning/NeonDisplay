@@ -1387,7 +1387,22 @@ def weather_loop():
             last_geo = now
         if now - last_weather > UPDATE_INTERVAL_WEATHER:
             new_weather = get_weather_data_by_coords(OPENWEATHER_API_KEY, lat, lon, "metric")
-            if new_weather is not None: weather_info = new_weather
+            if new_weather is not None: 
+                weather_info = new_weather
+                if weather_info and "icon_id" in weather_info:
+                    try:
+                        icon_url = f"http://openweathermap.org/img/wn/{weather_info['icon_id']}.png"
+                        resp = requests.get(icon_url, timeout=5)
+                        resp.raise_for_status()
+                        icon_img = Image.open(BytesIO(resp.content)).convert("RGBA")
+                        icon_img = icon_img.resize((30, 30), Image.BILINEAR)
+                        icon_img_bw = icon_img.convert('1')
+                        weather_info['cached_icon'] = icon_img_bw
+                    except Exception as e:
+                        print(f"Weather icon fetch error: {e}")
+                        weather_info['cached_icon'] = None
+                else:
+                    weather_info['cached_icon'] = None
             last_weather = now
         if START_SCREEN == "weather" and now - last_display_update >= 1:
             update_display()
@@ -1707,17 +1722,11 @@ def draw_waveshare_simple(weather_info, spotify_track):
     if weather_info:
         weather_icon_x = 8
         weather_icon_y = display_height - 55
-        if weather_info and "icon_id" in weather_info:
+        if weather_info and "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
             try:
-                icon_url = f"http://openweathermap.org/img/wn/{weather_info['icon_id']}.png"
-                resp = requests.get(icon_url, timeout=5)
-                resp.raise_for_status()
-                icon_img = Image.open(BytesIO(resp.content)).convert("RGBA")
-                icon_img = icon_img.resize((30, 30), Image.BILINEAR)
-                icon_img_bw = icon_img.convert('1')
-                img.paste(icon_img_bw, (weather_icon_x, weather_icon_y))
+                img.paste(weather_info["cached_icon"], (weather_icon_x, weather_icon_y))
             except Exception as e:
-                print(f"Weather icon error: {e}")
+                print(f"Error pasting cached weather icon: {e}")
         temp_text = f"{weather_info['temp']}°C"
         draw.text((45, display_height - 55), temp_text, font=font_large, fill=0)
         feels_like_text = f"Feels: {weather_info['feels_like']}°C"
