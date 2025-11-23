@@ -312,6 +312,47 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .track-title::before, .track-artist::before, .track-album::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 15px;
+            height: 100%;
+            background: linear-gradient(to right, var(--bg-tertiary), transparent);
+            z-index: 1;
+            pointer-events: none;
+        }
+        .track-title::after, .track-artist::after, .track-album::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 15px;
+            height: 100%;
+            background: linear-gradient(to left, var(--bg-tertiary), transparent);
+            z-index: 1;
+            pointer-events: none;
+        }
+        .track-title, .track-artist, .track-album {
+            position: relative;
+            overflow: hidden;
+            white-space: nowrap;
+            padding-left: 5px;
+        }
+        .track-title span, .track-artist span, .track-album span {
+            display: inline-block;
+            position: relative;
+        }
+        @keyframes scrollLoop {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .scroll-animated {
+            animation: scrollLoop 10s linear infinite;
+            display: inline-block;
+            white-space: nowrap;
+        }
         .track-status {
             font-size: 12px;
             font-weight: bold;
@@ -343,38 +384,6 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <div class="app-controls">
-            <div class="control-panel">
-                <h3>HUD35 Display</h3>
-                <div class="app-status {% if hud35_running %}running{% else %}stopped{% endif %}">
-                    Status: {% if hud35_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
-                </div>
-                {% if hud35_running %}
-                <form method="POST" action="/stop_hud35">
-                    <button type="submit" class="btn-danger">🛑 Stop HUD35</button>
-                </form>
-                {% else %}
-                <form method="POST" action="/start_hud35">
-                    <button type="submit" class="btn-success">🚀 Start HUD35</button>
-                </form>
-                {% endif %}
-            </div>
-            <div class="control-panel">
-                <h3>WiFi Manager</h3>
-                <div class="app-status {% if neonwifi_running %}running{% else %}stopped{% endif %}">
-                    Status: {% if neonwifi_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
-                </div>
-                {% if neonwifi_running %}
-                <form method="POST" action="/stop_neonwifi">
-                    <button type="submit" class="btn-danger">🛑 Stop WiFi Manager</button>
-                </form>
-                {% else %}
-                <form method="POST" action="/start_neonwifi">
-                    <button type="submit" class="btn-success">🚀 Start WiFi Manager</button>
-                </form>
-                {% endif %}
-            </div>
-        </div>
         {% if config.settings.enable_current_track_display and spotify_authenticated  %}
         <h2>🎵 Currently Playing</h2>
         <div id="currentTrackContainer" class="section">
@@ -442,6 +451,38 @@
                         🔍 Search Spotify
                     </button>
                 </a>
+            </div>
+        </div>
+        <div class="app-controls">
+            <div class="control-panel">
+                <h3>HUD35 Display</h3>
+                <div class="app-status {% if hud35_running %}running{% else %}stopped{% endif %}">
+                    Status: {% if hud35_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
+                </div>
+                {% if hud35_running %}
+                <form method="POST" action="/stop_hud35">
+                    <button type="submit" class="btn-danger">🛑 Stop HUD35</button>
+                </form>
+                {% else %}
+                <form method="POST" action="/start_hud35">
+                    <button type="submit" class="btn-success">🚀 Start HUD35</button>
+                </form>
+                {% endif %}
+            </div>
+            <div class="control-panel">
+                <h3>WiFi Manager</h3>
+                <div class="app-status {% if neonwifi_running %}running{% else %}stopped{% endif %}">
+                    Status: {% if neonwifi_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
+                </div>
+                {% if neonwifi_running %}
+                <form method="POST" action="/stop_neonwifi">
+                    <button type="submit" class="btn-danger">🛑 Stop WiFi Manager</button>
+                </form>
+                {% else %}
+                <form method="POST" action="/start_neonwifi">
+                    <button type="submit" class="btn-success">🚀 Start WiFi Manager</button>
+                </form>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -592,9 +633,33 @@
         const trackProgress = document.getElementById('trackProgress');
         const trackDuration = document.getElementById('trackDuration');
         const progressBar = document.getElementById('progressBar');
-        if (trackTitle) trackTitle.textContent = trackData.song;
-        if (trackArtist) trackArtist.textContent = 'by ' + trackData.artist;
-        if (trackAlbum) trackAlbum.textContent = 'on ' + trackData.album;
+        function updateLine(element, text) {
+            if (element.dataset.currentText === text) return;
+            element.dataset.currentText = text;
+            let span = element.querySelector('span');
+            if (!span) {
+                span = document.createElement('span');
+                element.innerHTML = '';
+                element.appendChild(span);
+            }
+            span.textContent = text;
+            const containerWidth = element.offsetWidth;
+            const textWidth = span.scrollWidth;
+            span.classList.remove('scroll-animated');
+            if (textWidth > containerWidth) {
+                span.textContent = text + '\u00A0\u00A0\u00A0\u00A0\u00A0+++++\u00A0\u00A0\u00A0\u00A0\u00A0' + text + '\u00A0\u00A0\u00A0\u00A0\u00A0+++++\u00A0\u00A0\u00A0\u00A0\u00A0';
+                span.classList.add('scroll-animated');
+                const overflowRatio = textWidth / containerWidth;
+                const baseDuration = 10;
+                const duration = baseDuration * overflowRatio;
+                span.style.animationDuration = duration + 's';
+            } else {
+                span.textContent = text;
+            }
+}
+        updateLine(trackTitle, trackData.song);
+        updateLine(trackArtist, trackData.artist);
+        updateLine(trackAlbum, trackData.album);
         if (trackStatus) {
             trackStatus.textContent = trackData.is_playing ? '▶ PLAYING' : '⏸ PAUSED';
             trackStatus.className = trackData.is_playing ? 'track-status playing' : 'track-status paused';
