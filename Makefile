@@ -164,7 +164,7 @@ config-display:
 		echo "$(YELLOW)Creating default config file...$(NC)"; \
 		make create-default-config > /dev/null 2>&1; \
 	fi
-	@current_display_type=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('type', 'framebuffer'))" 2>/dev/null || echo "framebuffer"); \
+	@current_display_type=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('type', 'dummy'))" 2>/dev/null || echo "dummy"); \
 	current_framebuffer=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('framebuffer', '/dev/fb1'))" 2>/dev/null || echo "/dev/fb1"); \
 	current_rotation=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('rotation', 0))" 2>/dev/null || echo "0"); \
 	current_spi_port=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('st7789', {}).get('spi_port', 0))" 2>/dev/null || echo "0"); \
@@ -175,7 +175,7 @@ config-display:
 	current_spi_speed=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('display', {}).get('st7789', {}).get('spi_speed', 60000000))" 2>/dev/null || echo "60000000"); \
 	echo "$(YELLOW)Current values (press Enter to keep):$(NC)"; \
 	echo "  Display Type: $$current_display_type"; \
-	read -p "  New Display Type [framebuffer]: " display_type; \
+	read -p "  New Display Type (framebuffer, st7789, dummy)[dummy]: " display_type; \
 	display_type=$${display_type:-$$current_display_type}; \
 	echo "  Framebuffer Device: $$current_framebuffer"; \
 	read -p "  New Framebuffer Device [/dev/fb1]: " framebuffer; \
@@ -319,7 +319,7 @@ config-settings:
 		echo "$(YELLOW)Creating default config file...$(NC)"; \
 		make create-default-config > /dev/null 2>&1; \
 	fi
-	@current_start_screen=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('settings', {}).get('start_screen', 'weather'))" 2>/dev/null || echo "weather"); \
+	@current_start_screen=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('settings', {}).get('start_screen', 'spotify'))" 2>/dev/null || echo "spotify"); \
 	current_fallback_city=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('settings', {}).get('fallback_city', ''))" 2>/dev/null || echo ""); \
 	current_clock_type=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('clock', {}).get('type', 'analog'))" 2>/dev/null || echo "analog"); \
 	current_clock_background=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('clock', {}).get('background', 'color'))" 2>/dev/null || echo "color"); \
@@ -331,7 +331,7 @@ config-settings:
 	current_enable_current_track_display=$$(python3 -c "import toml; config = toml.load('$(CONFIG_FILE)'); print(config.get('settings', {}).get('enable_current_track_display', True))" 2>/dev/null || echo "True"); \
 	echo "$(YELLOW)Current values (press Enter to keep):$(NC)"; \
 	echo "  Start Screen: $$current_start_screen"; \
-	read -p "  New Start Screen [weather]: " start_screen; \
+	read -p "  New Start Screen [spotify]: " start_screen; \
 	start_screen=$${start_screen:-$$current_start_screen}; \
 	echo "  Fallback City: $$current_fallback_city"; \
 	read -p "  New Fallback City: " fallback_city; \
