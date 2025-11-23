@@ -1,5 +1,0 @@
-spotipy
-Pillow
-evdev
-toml
-numpy
