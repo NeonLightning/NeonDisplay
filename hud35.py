@@ -1591,7 +1591,6 @@ def save_current_album_art(album_art_image, track_data=None):
             if os.path.exists('static/current_album_art.jpg'):
                 os.remove('static/current_album_art.jpg')
                 last_saved_album_art_hash = None
-                print(f"✅ Album art removed for web display")
             return
         current_hash = hash(album_art_image.tobytes())
         if current_hash == last_saved_album_art_hash:
@@ -1600,7 +1599,6 @@ def save_current_album_art(album_art_image, track_data=None):
         resized_art = album_art_image.resize(display_size, Image.LANCZOS)
         resized_art.save('static/current_album_art.jpg', 'JPEG', quality=85)
         last_saved_album_art_hash = current_hash
-        print(f"✅ Album art saved for web display (track: {track_data.get('title', 'Unknown') if track_data else 'Unknown'})")
     except Exception as e:
         print(f"❌ Error saving album art for web: {e}")
 
@@ -1824,7 +1822,6 @@ def display_image_on_waveshare(image):
                 image = image.convert('1')
             content_changed = getattr(image, 'content_changed', True)
             if content_changed or partial_refresh_count >= 300:
-            #if partial_refresh_count >= 300:
                 waveshare_epd.display(waveshare_epd.getbuffer(image))
                 waveshare_base_image = image.copy()
                 partial_refresh_count = 0
@@ -1874,8 +1871,7 @@ def update_display():
     display_image_on_framebuffer(img)
 
 def clear_framebuffer():
-    global HAS_ST7789  # Add this to access the global variable
-    
+    global HAS_ST7789
     display_type = config.get("display", {}).get("type", "framebuffer")
     if display_type == "dummy":
         return
@@ -1901,29 +1897,20 @@ def clear_framebuffer():
         black_img = Image.new("RGB", (320, 240), "black")
         st7789_display.display(black_img)
     else:
-        # PROPER framebuffer clearing
         try:
-            # Method 1: Create and display a proper black image
             black_image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), "black")
             display_image_on_original_fb(black_image)
-            
-            # Method 2: Write black pixels directly (with proper file handling)
             try:
                 with open(FRAMEBUFFER, "wb") as f:
-                    # Write proper black pixels in RGB565 format
-                    black_pixel = b'\x00\x00'  # RGB565 black
+                    black_pixel = b'\x00\x00'
                     f.write(black_pixel * SCREEN_WIDTH * SCREEN_HEIGHT)
-                    # Flush BEFORE closing the file
                     f.flush()
                     os.fsync(f.fileno())
             except Exception as e:
                 print(f"Direct framebuffer write failed: {e}")
-            
             print(f"✅ Framebuffer cleared: {FRAMEBUFFER}")
-            
         except Exception as e:
             print(f"❌ Error clearing framebuffer: {e}")
-            # Fallback to ST7789 if available
             if HAS_ST7789:
                 try:
                     black_img = Image.new("RGB", (320, 240), "black")
@@ -1969,7 +1956,6 @@ def signal_handler(sig, frame):
 def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
     Thread(target=background_generation_worker, daemon=True).start()
     Thread(target=weather_loop, daemon=True).start()
     Thread(target=spotify_loop, daemon=True).start()
@@ -1977,9 +1963,7 @@ def main():
     Thread(target=handle_buttons, daemon=True).start()
     Thread(target=animate_images, daemon=True).start()
     Thread(target=animate_text_scroll, daemon=True).start()
-    
     update_display()
-    
     try:
         while not exit_event.is_set():
             check_display_sleep()
@@ -1989,37 +1973,25 @@ def main():
         print("\nShutting down...")
     finally:
         print("🔄 Starting cleanup...")
-        
-        # Show "no track playing" screen before full shutdown
         global START_SCREEN, spotify_track
         original_screen = START_SCREEN
         START_SCREEN = "spotify"
         spotify_track = None
         update_spotify_layout(None)
-        
-        # Update display to show "no track playing"
         try:
             update_display()
-            time.sleep(0.3)  # Give it time to render
+            time.sleep(0.3)
         except:
             pass
-        
         cleanup_scroll_state()
-        
-        # Give threads time to stop
         exit_event.set()
         time.sleep(0.5)
-        
-        # Clear display
         clear_framebuffer()
-        
-        # Additional cleanup for GPIO
         if HAS_GPIO:
             try:
                 GPIO.cleanup()
             except:
                 pass
-        
         print("✅ Cleanup complete")
 
 if __name__ == "__main__":

@@ -1304,7 +1304,6 @@ def update_song_count(song_info):
         with open(temp_file, 'wb') as f:
             f.write(zlib.compress(pickle.dumps(all_data, protocol=pickle.HIGHEST_PROTOCOL), level=9))
         os.replace(temp_file, 'song_counts.bin')
-        logger.info(f"🎵 Updated count: {song_info.get('song', 'Unknown Track')}")
         last_logged_song = current_song
     except Exception as e:
         logger.error(f"Error updating song count: {e}")
