@@ -962,6 +962,24 @@ def spotify_volume():
         logger.error(f"Volume set error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
+@app.route('/spotify_seek', methods=['POST'])
+@rate_limit(0.5)
+def spotify_seek():
+    try:
+        position_ms = request.json.get('position_ms', 0)
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        playback = sp.current_playback()
+        if not playback or not playback.get('is_playing', False):
+            return {'success': False, 'error': 'No active playback'}
+        sp.seek_track(position_ms)
+        return {'success': True, 'message': 'Playback position set'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Seek error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
 @app.route('/spotify_search', methods=['POST'])
 @rate_limit(1.0)
 def spotify_search():
