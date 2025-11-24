@@ -119,6 +119,7 @@
                 <button onclick="toggleLive()" id="liveBtn">▶️ Start Live</button>
                 <button onclick="location.href='/'">← Back to Launcher</button>
                 <button onclick="clearLogs()">🗑️ Clear Logs</button>
+                <button onclick="clearBackups()">🗑️ Clear Backups</button>
                 <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">
                     {{ '☀️' if current_theme == 'dark' else '🌙' }}
                 </button>
@@ -181,12 +182,36 @@
             logContainer.scrollTop = logContainer.scrollHeight;
         }
         function clearLogs() {
-            if (confirm('Are you sure you want to clear the logs?')) {
-                fetch('/clear_logs', { method: 'POST' })
-                    .then(() => {
-                        document.getElementById('logContent').innerText = 'Logs cleared...';
-                        colorCodeLogs();
-                    });
+            if (confirm('Are you sure you want to clear the current log?')) {
+                fetch('/clear_logs', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'clear_option=current'
+                })
+                .then(() => {
+                    document.getElementById('logContent').innerText = 'Current log cleared...';
+                    colorCodeLogs();
+                });
+            }
+        }
+        function clearBackups() {
+            if (confirm('Are you sure you want to clear ALL backup logs? This cannot be undone.')) {
+                fetch('/clear_logs', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'clear_option=all'
+                })
+                .then(response => response.text())
+                .then(message => {
+                    alert(message);
+                })
+                .catch(error => {
+                    alert('Error clearing backups: ' + error);
+                });
             }
         }
         function colorCodeLogs() {

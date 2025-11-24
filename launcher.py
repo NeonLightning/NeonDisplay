@@ -81,6 +81,10 @@ DEFAULT_CONFIG = {
         "button_x": 16,
         "button_y": 24
     },
+    "logging": {
+        "max_log_lines": 10000,
+        "max_backup_files": 5
+    },
     "ui": {
         "theme": "dark"
     }
@@ -110,26 +114,62 @@ def save_config(config):
 
 def setup_logging():
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    class RobustFileHandler(logging.FileHandler):
-        def __init__(self, filename, mode='a', encoding=None, delay=False):
+    class RobustRotatingFileHandler(logging.Handler):
+        def __init__(self, filename, max_lines=10000, max_backups=10):
             self._filename = filename
-            self._mode = mode
-            self._encoding = encoding
-            self._delay = delay
+            self._max_lines = max_lines
+            self._max_backups = max_backups
+            self._backup_folder = "backuplogs"
+            self._current_line_count = 0
             self._ensure_directory_exists()
-            super().__init__(filename, mode, encoding, delay)
+            self._rotate_if_needed()
+            super().__init__()
         def _ensure_directory_exists(self):
             directory = os.path.dirname(self._filename)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory, exist_ok=True)
-        def emit(self, record):
-            # Recreate file if it was deleted
+            if self._backup_folder and not os.path.exists(self._backup_folder):
+                os.makedirs(self._backup_folder, exist_ok=True)
+        def _rotate_if_needed(self):
             if not os.path.exists(self._filename):
-                try:
-                    self.stream = self._open()
-                except Exception:
-                    return
-            super().emit(record)
+                self._current_line_count = 0
+                return
+            try:
+                with open(self._filename, 'r') as f:
+                    self._current_line_count = sum(1 for _ in f)
+                if self._current_line_count >= self._max_lines:
+                    self._perform_rotation()
+            except Exception as e:
+                print(f"Error checking log rotation: {e}")
+                self._current_line_count = 0
+        def _perform_rotation(self):
+            try:
+                for i in range(self._max_backups - 1, 0, -1):
+                    old_file = os.path.join(self._backup_folder, f"hud35.log.{i}")
+                    new_file = os.path.join(self._backup_folder, f"hud35.log.{i+1}")
+                    if os.path.exists(old_file):
+                        if os.path.exists(new_file):
+                            os.remove(new_file)
+                        os.rename(old_file, new_file)
+                backup_file = os.path.join(self._backup_folder, "hud35.log.1")
+                if os.path.exists(self._filename):
+                    if os.path.exists(backup_file):
+                        os.remove(backup_file)
+                    os.rename(self._filename, backup_file)
+                self._current_line_count = 0
+                print(f"Log rotated: {self._filename} -> {backup_file}")
+            except Exception as e:
+                print(f"Error during log rotation: {e}")
+        def emit(self, record):
+            try:
+                msg = self.format(record) + '\n'
+                if self._current_line_count >= self._max_lines:
+                    self._perform_rotation()
+                with open(self._filename, 'a') as f:
+                    f.write(msg)
+                self._current_line_count += 1
+            except Exception as e:
+                print(f"Error writing to log file: {e}")
     logger = logging.getLogger('Launcher')
     logger.setLevel(logging.INFO)
     for handler in logger.handlers[:]:
@@ -142,7 +182,15 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     try:
-        file_handler = RobustFileHandler('hud35.log', delay=True)
+        config = load_config()
+        log_config = config.get("logging", {})
+        max_lines = log_config.get("max_log_lines", 10000)
+        max_backups = log_config.get("max_backup_files", 10)
+        file_handler = RobustRotatingFileHandler(
+            'hud35.log', 
+            max_lines=max_lines,
+            max_backups=max_backups
+        )
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
@@ -671,18 +719,23 @@ def view_logs():
 def clear_logs():
     log_file = 'hud35.log'
     try:
-        with open(log_file, 'w') as f:
-            f.write(f"Logs cleared at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        logger = logging.getLogger('Launcher')
-        for handler in logger.handlers[:]:
-            if isinstance(handler, logging.FileHandler):
-                logger.removeHandler(handler)
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-        return 'Logs cleared and logging reinitialized', 200
+        backup_folder = "backuplogs"
+        clear_option = request.form.get('clear_option', 'current')
+        if clear_option == 'all':
+            backups_cleared = 0
+            for i in range(1, 100):
+                backup_file = os.path.join(backup_folder, f"hud35.log.{i}")
+                if os.path.exists(backup_file):
+                    os.remove(backup_file)
+                    backups_cleared += 1
+                else:
+                    break
+            message = f'Backup logs cleared ({backups_cleared} files removed)'
+        else:
+            with open(log_file, 'w') as f:
+                f.write(f"Logs cleared at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            message = 'Current log cleared'
+        return message, 200
     except Exception as e:
         return f'Error clearing logs: {str(e)}', 500
 
@@ -1160,18 +1213,42 @@ def save_advanced_config():
         config["settings"]["use_gpsd"] = 'use_gpsd' in request.form
         config["settings"]["use_google_geo"] = 'use_google_geo' in request.form
         config["settings"]["enable_current_track_display"] = 'enable_current_track_display' in request.form
+        if "logging" not in config:
+            config["logging"] = {}
+        config["logging"]["max_log_lines"] = int(request.form.get('max_log_lines', 10000))
+        config["logging"]["max_backup_files"] = int(request.form.get('max_backup_files', 5))
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000')
         config["clock"]["background"] = request.form.get('clock_background', 'color')
         config["clock"]["color"] = request.form.get('clock_color', '#000000')
         config["clock"]["type"] = request.form.get('clock_type', 'digital')
         save_config(config)
         flash('success', 'Advanced configuration saved successfully!')
-        if is_hud35_running():
-            stop_hud35()
-            start_hud35()
-        if is_neonwifi_running():
-            stop_neonwifi()
-            start_neonwifi()
+        def restart_process(process_name, stop_func, start_func, check_func):
+            max_wait_time = 10
+            wait_interval = 0.5
+            if check_func():
+                success, message = stop_func()
+                if not success:
+                    flash('warning', f'Warning stopping {process_name}: {message}')
+            start_time = time.time()
+            while check_func() and (time.time() - start_time) < max_wait_time:
+                time.sleep(wait_interval)
+            if check_func():
+                flash('warning', f'{process_name} did not stop gracefully, forcing restart')
+                if process_name.lower() == 'hud35':
+                    subprocess.run(['pkill', '-f', 'hud35.py'], check=False)
+                else:
+                    subprocess.run(['pkill', '-f', 'neonwifi.py'], check=False)
+                time.sleep(2)
+            success, message = start_func()
+            if not success:
+                flash('error', f'Error starting {process_name}: {message}')
+        was_hud35_running = is_hud35_running()
+        if was_hud35_running:
+            restart_process('HUD35', stop_hud35, start_hud35, is_hud35_running)
+        was_neonwifi_running = is_neonwifi_running()
+        if was_neonwifi_running:
+            restart_process('neonwifi', stop_neonwifi, start_neonwifi, is_neonwifi_running)
     except Exception as e:
         flash('error', f'Error saving configuration: {str(e)}')
     return redirect(url_for('advanced_config'))
