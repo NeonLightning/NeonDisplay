@@ -1095,6 +1095,7 @@ def spotify_loop():
     last_api_call = 0
     consecutive_no_track_count = 0
     max_consecutive_no_track = 15
+    current_check_interval = base_track_check_interval
     sp = initialize_spotify_client()
     if sp is None:
         sp = authenticate_spotify_interactive()
@@ -1125,9 +1126,9 @@ def spotify_loop():
             consecutive_no_track_count = 0
         else:
             if consecutive_no_track_count >= max_consecutive_no_track:
-                current_check_interval = idle_check_interval * 2
-            else:
                 current_check_interval = idle_check_interval
+            else:
+                current_check_interval = base_track_check_interval
         time_since_last_api = current_time - last_api_call
         if time_since_last_api < current_check_interval:
             time.sleep(0.1)
