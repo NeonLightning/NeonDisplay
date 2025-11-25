@@ -227,6 +227,11 @@ def wait_for_internet(timeout=60, check_interval=5):
     logger.error("❌ Internet connection timeout")
     return False
 
+def safe_check_spotify_auth():
+    if not check_internet_connection(timeout=3):
+        return False, "No internet connection"
+    return check_spotify_auth()
+
 def auto_launch_applications():
     logger = logging.getLogger('Launcher')
     config = load_config()
@@ -885,6 +890,8 @@ def current_album_art():
 @app.route('/spotify_play', methods=['POST'])
 @rate_limit(0.5)
 def spotify_play():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
     try:
         sp, message = get_spotify_client()
         if not sp:
@@ -913,6 +920,8 @@ def spotify_pause():
 @app.route('/spotify_next', methods=['POST'])
 @rate_limit(0.5)
 def spotify_next():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
     try:
         sp, message = get_spotify_client()
         if not sp:
@@ -927,6 +936,8 @@ def spotify_next():
 @app.route('/spotify_previous', methods=['POST'])
 @rate_limit(0.5)
 def spotify_previous():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
     try:
         sp, message = get_spotify_client()
         if not sp:
@@ -944,6 +955,8 @@ def spotify_get_volume():
         sp, message = get_spotify_client()
         if not sp:
             return {'success': False, 'error': message}
+        if not check_internet_connection(timeout=3):
+            return {'success': False, 'error': 'No internet connection'}
         playback = sp.current_playback()
         if playback and 'device' in playback:
             current_volume = playback['device'].get('volume_percent', 50)
@@ -958,6 +971,8 @@ def spotify_get_volume():
 @app.route('/spotify_volume', methods=['POST'])
 @rate_limit(0.5)
 def spotify_volume():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
     try:
         volume = request.json.get('volume', 50)
         volume = max(0, min(100, volume))

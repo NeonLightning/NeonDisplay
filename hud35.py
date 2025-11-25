@@ -23,6 +23,7 @@ BG_DIR = "./bg"
 CLOCK_TYPE = "analog"
 CLOCK_BACKGROUND = "color"
 CLOCK_COLOR = "black"
+INTERNET_CHECK_INTERVAL = 120
 
 DEFAULT_CONFIG = {
     "display": {
@@ -140,6 +141,8 @@ file_write_lock = threading.Lock()
 last_activity_time = time.time()
 display_sleeping = False
 last_saved_album_art_hash = None
+internet_available = True
+last_internet_check = 0
 
 def load_config(path="config.toml"):
     if not os.path.exists(path):
@@ -253,6 +256,25 @@ def cleanup_caches():
     if len(scrolling_text_cache) > 3:
         scrolling_text_cache.clear()
 
+def check_internet_connection(timeout=5):
+    try:
+        response = requests.get("http://www.google.com", timeout=timeout)
+        return response.status_code == 200
+    except requests.RequestException:
+        try:
+            socket.create_connection(("8.8.8.8", 53), timeout=timeout)
+            return True
+        except:
+            return False
+
+def update_internet_status():
+    global internet_available, last_internet_check
+    current_time = time.time()
+    if current_time - last_internet_check > INTERNET_CHECK_INTERVAL:
+        internet_available = check_internet_connection(timeout=3)
+        last_internet_check = current_time
+    return internet_available
+
 def get_location_via_gpsd(timeout=5, debug=True):
     try:
         dev_result = subprocess.run(['gpspipe', '-w', '-n', '2'], capture_output=True, text=True, check=False)
@@ -299,6 +321,8 @@ def get_location_via_google_geolocation(api_key):
         return None, None
 
 def get_location_via_openweathermap_geocoding(api_key, city_name):
+    if not update_internet_status():
+        return None, None
     if not city_name: return None, None
     url = f"http://api.openweathermap.org/geo/1.0/direct?q={city_name}&limit=1&appid={api_key}"
     try:
@@ -325,6 +349,12 @@ def cache_weather(lat, lon, data):
     weather_cache[f"{lat:.2f}_{lon:.2f}"] = (data, time.time())
 
 def get_weather_data_by_coords(api_key, lat, lon, units):
+    if not update_internet_status():
+        print("⚠️ Skipping weather update - no internet")
+        cache_key = f"{lat:.2f}_{lon:.2f}"
+        if cache_key in weather_cache:
+            return weather_cache[cache_key][0]
+        return None
     if lat is None or lon is None: return None
     cache_key = f"{lat:.2f}_{lon:.2f}"
     current_time = time.time()
