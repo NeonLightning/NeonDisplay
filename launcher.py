@@ -4,6 +4,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime
 from collections import Counter
 from functools import wraps
+from logging.handlers import RotatingFileHandler
 import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil
 
 app = Flask(__name__)
@@ -115,66 +116,11 @@ def save_config(config):
 
 def setup_logging():
     logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    class RobustRotatingFileHandler(logging.Handler):
-        def __init__(self, filename, max_lines=10000, max_backups=10):
-            self._filename = filename
-            self._max_lines = max_lines
-            self._max_backups = max_backups
-            self._backup_folder = "backuplogs"
-            self._current_line_count = 0
-            self._ensure_directory_exists()
-            self._rotate_if_needed()
-            super().__init__()
-        def _ensure_directory_exists(self):
-            directory = os.path.dirname(self._filename)
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory, exist_ok=True)
-            if self._backup_folder and not os.path.exists(self._backup_folder):
-                os.makedirs(self._backup_folder, exist_ok=True)
-        def _rotate_if_needed(self):
-            if not os.path.exists(self._filename):
-                self._current_line_count = 0
-                return
-            try:
-                with open(self._filename, 'r') as f:
-                    self._current_line_count = sum(1 for _ in f)
-                if self._current_line_count >= self._max_lines:
-                    self._perform_rotation()
-            except Exception as e:
-                print(f"Error checking log rotation: {e}")
-                self._current_line_count = 0
-        def _perform_rotation(self):
-            try:
-                for i in range(self._max_backups - 1, 0, -1):
-                    old_file = os.path.join(self._backup_folder, f"hud35.log.{i}")
-                    new_file = os.path.join(self._backup_folder, f"hud35.log.{i+1}")
-                    if os.path.exists(old_file):
-                        if os.path.exists(new_file):
-                            os.remove(new_file)
-                        os.rename(old_file, new_file)
-                backup_file = os.path.join(self._backup_folder, "hud35.log.1")
-                if os.path.exists(self._filename):
-                    if os.path.exists(backup_file):
-                        os.remove(backup_file)
-                    os.rename(self._filename, backup_file)
-                self._current_line_count = 0
-                print(f"Log rotated: {self._filename} -> {backup_file}")
-            except Exception as e:
-                print(f"Error during log rotation: {e}")
-        def emit(self, record):
-            try:
-                msg = self.format(record) + '\n'
-                if self._current_line_count >= self._max_lines:
-                    self._perform_rotation()
-                with open(self._filename, 'a') as f:
-                    f.write(msg)
-                self._current_line_count += 1
-            except Exception as e:
-                print(f"Error writing to log file: {e}")
     logger = logging.getLogger('Launcher')
-    logger.setLevel(logging.INFO)
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
+    
+    logger.setLevel(logging.INFO)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
@@ -186,20 +132,23 @@ def setup_logging():
         config = load_config()
         log_config = config.get("logging", {})
         max_lines = log_config.get("max_log_lines", 10000)
-        max_backups = log_config.get("max_backup_files", 10)
-        file_handler = RobustRotatingFileHandler(
+        max_bytes = max_lines * 100  
+        backup_count = log_config.get("max_backup_files", 5)
+        file_handler = RotatingFileHandler(
             'hud35.log', 
-            max_lines=max_lines,
-            max_backups=max_backups
+            maxBytes=max_bytes, 
+            backupCount=backup_count
         )
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        if not os.path.exists('hud35.log'):
-            with open('hud35.log', 'w') as f:
-                f.write(f"Log file created at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        if not os.path.exists('hud35.log') or os.path.getsize('hud35.log') == 0:
+            with open('hud35.log', 'a') as f:
+                f.write(f"Log file initialized at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                
     except Exception as e:
-        logger.error(f"Failed to setup file logging: {e}")
+        print(f"Failed to setup file logging: {e}")
+        
     return logger
 
 def check_internet_connection(timeout=5):
@@ -369,7 +318,6 @@ def is_neonwifi_running():
 def parse_song_from_log(log_line):
     if 'Now playing:' in log_line:
         try:
-            # Extract the song part
             if '🎵 Now playing:' in log_line:
                 song_part = log_line.split('🎵 Now playing: ')[1].strip()
             else:
@@ -377,7 +325,6 @@ def parse_song_from_log(log_line):
             separators = [' -- ', ' - ', ' – ']
             artist_part = 'Unknown Artist'
             song = song_part
-            
             for separator in separators:
                 if separator in song_part:
                     artist_part, song = song_part.split(separator, 1)
