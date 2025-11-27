@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>HUD35 Launcher</title>
+    <title>NeonDisplay Launcher</title>
     <style>
         :root {
             --bg-primary: #1a1a1a;
@@ -382,7 +382,7 @@
         {% endif %}
     </button>
     <div class="container">
-        <h1>HUD35 Launcher</h1>
+        <h1>NeonDisplay Launcher</h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -463,17 +463,17 @@
         </div>
         <div class="app-controls">
             <div class="control-panel">
-                <h3>HUD35 Display</h3>
-                <div class="app-status {% if hud35_running %}running{% else %}stopped{% endif %}">
-                    Status: {% if hud35_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
+                <h3>NeonDisplay Display</h3>
+                <div class="app-status {% if hud_running %}running{% else %}stopped{% endif %}">
+                    Status: {% if hud_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
                 </div>
-                {% if hud35_running %}
-                <form method="POST" action="/stop_hud35">
-                    <button type="submit" class="btn-danger">🛑 Stop HUD35</button>
+                {% if hud_running %}
+                <form method="POST" action="/stop_hud">
+                    <button type="submit" class="btn-danger">🛑 Stop hud</button>
                 </form>
                 {% else %}
-                <form method="POST" action="/start_hud35">
-                    <button type="submit" class="btn-success">🚀 Start HUD35</button>
+                <form method="POST" action="/start_hud">
+                    <button type="submit" class="btn-success">🚀 Start hud</button>
                 </form>
                 {% endif %}
             </div>
@@ -506,8 +506,8 @@
             <div class="section">
                 <h2>⚡ Auto-start Configuration</h2>
                 <div class="toggle-switch">
-                    <input type="checkbox" id="auto_start_hud35" name="auto_start_hud35" {% if auto_config.auto_start_hud35 %}checked{% endif %}>
-                    <label for="auto_start_hud35">Auto-start HUD35 Display on boot</label>
+                    <input type="checkbox" id="auto_start_hud" name="auto_start_hud" {% if auto_config.auto_start_hud %}checked{% endif %}>
+                    <label for="auto_start_hud">Auto-start hud Display on boot</label>
                 </div>
                 <div class="toggle-switch">
                     <input type="checkbox" id="auto_start_neonwifi" name="auto_start_neonwifi" {% if auto_config.auto_start_neonwifi %}checked{% endif %}>
@@ -515,7 +515,7 @@
                 </div>
                 <div class="toggle-switch">
                     <input type="checkbox" id="check_internet" name="check_internet" {% if auto_config.check_internet %}checked{% endif %}>
-                    <label for="check_internet">Wait for internet connection before starting HUD35</label>
+                    <label for="check_internet">Wait for internet connection before starting hud</label>
                 </div>
             </div>
             <button type="submit" class="save-all-button">💾 Save Auto-start Settings</button>
@@ -1016,21 +1016,21 @@
         resetControlButtons();
     });
     function updateAppStatus() {
-        fetch('/status/hud35')
+        fetch('/status/hud')
             .then(response => response.json())
             .then(data => {
-                const hud35Status = document.querySelector('.control-panel:nth-child(1) .app-status');
-                if (hud35Status) {
+                const hudStatus = document.querySelector('.control-panel:nth-child(1) .app-status');
+                if (hudStatus) {
                     if (data.running) {
-                        hud35Status.textContent = 'Status: ✅ RUNNING';
-                        hud35Status.className = 'app-status running';
+                        hudStatus.textContent = 'Status: ✅ RUNNING';
+                        hudStatus.className = 'app-status running';
                     } else {
-                        hud35Status.textContent = 'Status: ❌ STOPPED';
-                        hud35Status.className = 'app-status stopped';
+                        hudStatus.textContent = 'Status: ❌ STOPPED';
+                        hudStatus.className = 'app-status stopped';
                     }
                 }
             })
-            .catch(error => console.error('Error fetching HUD35 status:', error));
+            .catch(error => console.error('Error fetching hud status:', error));
         fetch('/status/neonwifi')
             .then(response => response.json())
             .then(data => {

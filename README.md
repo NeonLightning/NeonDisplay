@@ -1,4 +1,4 @@
-# HUD35 Launcher
+# NeonDisplay
 
 A comprehensive Raspberry Pi-based display system with weather information, Spotify integration, and web-based control interface.
 For 3.5" TFT, Display Hat Mini, and Waveshare 2.13" e-ink screens.
@@ -45,7 +45,7 @@ For 3.5" TFT, Display Hat Mini, and Waveshare 2.13" e-ink screens.
 ### Quick Install
 ```bash
 # Clone the repository
-https://github.com/NeonLightning/Hud35.git
+https://github.com/NeonLightning/NeonDisplay.git
 cd Hud35
 
 # Run complete installation (excluding display drivers)

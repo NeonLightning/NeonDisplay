@@ -1,9 +1,9 @@
-VENV_DIR = /opt/hud35/venv
-SERVICE_NAME = hud35
-PROJECT_DIR = /opt/hud35
+VENV_DIR = /opt/neondisplay/venv
+SERVICE_NAME = neondisplay
+PROJECT_DIR = /opt/neondisplay
 SERVICE_FILE = /etc/systemd/system/$(SERVICE_NAME).service
 LCD_SHOW_DIR = LCD-show
-CONFIG_FILE = /opt/hud35/config.toml
+CONFIG_FILE = /opt/neondisplay/config.toml
 GREEN = \033[0;32m
 YELLOW = \033[0;33m
 RED = \033[0;31m
@@ -24,7 +24,7 @@ all: system-deps python-packages config setup-service
 system-deps:
 	@echo "$(GREEN)Installing system dependencies...$(NC)"
 	sudo apt update
-	sudo apt install -y python3-pip python3-venv curl
+	sudo apt install -y python3-pip python3-venv curl hostapd dnsmasq
 	sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev git
 	sudo apt install -y liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
 	sudo apt install -y libopenblas-dev libcairo2-dev libdbus-1-dev
@@ -70,34 +70,34 @@ setup-display:
 
 setup-service:
 	@echo "$(GREEN)Setting up systemd service...$(NC)"
-	@if [ -f "hud35.service" ]; then \
-		echo "$(GREEN)Updating existing hud35.service to use virtual environment...$(NC)"; \
-		sed 's|/usr/bin/python3|$(VENV_DIR)/bin/python3|' hud35.service > hud35.service.venv; \
-		sudo cp hud35.service.venv $(SERVICE_FILE); \
-		rm hud35.service.venv; \
+	@if [ -f "neondisplay.service" ]; then \
+		echo "$(GREEN)Updating existing neondisplay.service to use virtual environment...$(NC)"; \
+		sed 's|/usr/bin/python3|$(VENV_DIR)/bin/python3|' neondisplay.service > neondisplay.service.venv; \
+		sudo cp neondisplay.service.venv $(SERVICE_FILE); \
+		rm neondisplay.service.venv; \
 	else \
-		echo "$(YELLOW)No hud35.service found, creating one...$(NC)"; \
-		echo "[Unit]" > hud35.service.tmp; \
-		echo "Description=HUD35 Launcher Service" >> hud35.service.tmp; \
-		echo "After=network.target" >> hud35.service.tmp; \
-		echo "Wants=network.target" >> hud35.service.tmp; \
-		echo "" >> hud35.service.tmp; \
-		echo "[Service]" >> hud35.service.tmp; \
-		echo "Type=simple" >> hud35.service.tmp; \
-		echo "User=root" >> hud35.service.tmp; \
-		echo "Group=root" >> hud35.service.tmp; \
-		echo "WorkingDirectory=$(PROJECT_DIR)" >> hud35.service.tmp; \
-		echo "ExecStart=$(VENV_DIR)/bin/python3 $(PROJECT_DIR)/launcher.py" >> hud35.service.tmp; \
-		echo "Restart=on-failure" >> hud35.service.tmp; \
-		echo "RestartSec=5" >> hud35.service.tmp; \
-		echo "TimeoutStartSec=30" >> hud35.service.tmp; \
-		echo "StandardOutput=journal" >> hud35.service.tmp; \
-		echo "StandardError=journal" >> hud35.service.tmp; \
-		echo "" >> hud35.service.tmp; \
-		echo "[Install]" >> hud35.service.tmp; \
-		echo "WantedBy=multi-user.target" >> hud35.service.tmp; \
-		sudo cp hud35.service.tmp $(SERVICE_FILE); \
-		rm hud35.service.tmp; \
+		echo "$(YELLOW)No neondisplay.service found, creating one...$(NC)"; \
+		echo "[Unit]" > neondisplay.service.tmp; \
+		echo "Description=NeonDisplay NeonDisplay Service" >> neondisplay.service.tmp; \
+		echo "After=network.target" >> neondisplay.service.tmp; \
+		echo "Wants=network.target" >> neondisplay.service.tmp; \
+		echo "" >> neondisplay.service.tmp; \
+		echo "[Service]" >> neondisplay.service.tmp; \
+		echo "Type=simple" >> neondisplay.service.tmp; \
+		echo "User=root" >> neondisplay.service.tmp; \
+		echo "Group=root" >> neondisplay.service.tmp; \
+		echo "WorkingDirectory=$(PROJECT_DIR)" >> neondisplay.service.tmp; \
+		echo "ExecStart=$(VENV_DIR)/bin/python3 $(PROJECT_DIR)/neondisplay.py" >> neondisplay.service.tmp; \
+		echo "Restart=on-failure" >> neondisplay.service.tmp; \
+		echo "RestartSec=5" >> neondisplay.service.tmp; \
+		echo "TimeoutStartSec=30" >> neondisplay.service.tmp; \
+		echo "StandardOutput=journal" >> neondisplay.service.tmp; \
+		echo "StandardError=journal" >> neondisplay.service.tmp; \
+		echo "" >> neondisplay.service.tmp; \
+		echo "[Install]" >> neondisplay.service.tmp; \
+		echo "WantedBy=multi-user.target" >> neondisplay.service.tmp; \
+		sudo cp neondisplay.service.tmp $(SERVICE_FILE); \
+		rm neondisplay.service.tmp; \
 	fi
 	sudo systemctl daemon-reload
 	sudo systemctl enable $(SERVICE_NAME).service
@@ -106,7 +106,7 @@ setup-service:
 
 config:
 	@echo "$(BLUE)=========================================$(NC)"
-	@echo "$(BLUE)      HUD35 WALK-THROUGH CONFIGURATION    $(NC)"
+	@echo "$(BLUE)      NeonDisplay WALK-THROUGH CONFIGURATION    $(NC)"
 	@echo "$(BLUE)=========================================$(NC)"
 	@echo "$(YELLOW)This will guide you through all configuration settings$(NC)"
 	@echo "$(YELLOW)Press Enter to keep current value, or enter a new value$(NC)"
@@ -436,7 +436,7 @@ DEFAULT_CONFIG = { \
         'ap_ip': '192.168.42.1', \
     }, \
     'auto_start': { \
-        'auto_start_hud35': True, \
+        'auto_start_hud': True, \
         'auto_start_neonwifi': True, \
         'check_internet': True \
     }, \
@@ -479,7 +479,7 @@ logs:
 
 tail:
 	@echo "$(GREEN)Viewing program logs:$(NC)"
-	tail -f /opt/hud35/hud35.log
+	tail -f /opt/neondisplay/neondisplay.log
 
 update-packages:
 	@echo "$(GREEN)Updating Python packages with uv...$(NC)"
@@ -490,7 +490,7 @@ update-packages:
 
 run:
 	@echo "$(GREEN)Running in virtual environment...$(NC)"
-	$(VENV_DIR)/bin/python3 launcher.py
+	$(VENV_DIR)/bin/python3 neondisplay.py
 
 venv-info:
 	@echo "$(GREEN)Virtual environment info:$(NC)"
@@ -512,7 +512,7 @@ clean:
 	@echo "$(GREEN)Cleanup complete$(NC)"
 
 help:
-	@echo "$(GREEN)HUD35 Setup Makefile (using uv)$(NC)"
+	@echo "$(GREEN)NeonDisplay Setup Makefile (using uv)$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@echo "  $(GREEN)all$(NC)             - Complete installation(not display)"
