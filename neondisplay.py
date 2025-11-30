@@ -673,6 +673,24 @@ def spotify_auth_page():
         flash('error', f'Spotify authentication error: {str(e)}')
         return redirect(url_for('index'))
 
+@app.route('/spotify_device_status', methods=['GET'])
+def spotify_device_status():
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'has_active_device': False, 'error': message}
+        playback = sp.current_playback()
+        has_active_device = playback is not None and playback.get('device') is not None
+        return {
+            'success': True, 
+            'has_active_device': has_active_device,
+            'device_name': playback['device']['name'] if has_active_device else None
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error checking device status: {e}")
+        return {'success': False, 'has_active_device': False, 'error': str(e)}
+
 @app.route('/process_callback_url', methods=['POST'])
 def process_callback_url():
     config = load_config()

@@ -437,76 +437,83 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        {% if config.settings.enable_current_track_display and spotify_authenticated  %}
-        <h2>♪ Currently Playing</h2>
-        <div id="currentTrackContainer" class="section">
-            <div style="display: flex; gap: 20px; align-items: flex-start;">
-                <div class="album-art-container">
-                    <img id="albumArtImg" src="/current_album_art" 
-                        class="album-art"
-                        style="display: none;"
-                        onload="handleAlbumArtLoad()"
-                        onerror="handleAlbumArtError()">
-                    <div id="albumArtPlaceholder" class="album-art-placeholder">
-                        🎵
-                    </div>
-                </div>
-                <div class="track-info">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                        <div style="flex: 1; min-width: 0;">
-                            <div id="trackTitle" class="track-title">Loading current track...</div>
-                            <div id="trackArtist" class="track-artist"></div>
-                            <div id="trackAlbum" class="track-album"></div>
+        {% if config.settings.enable_current_track_display and spotify_authenticated %}
+        <div id="noDeviceMessage" class="section">
+            <div class="status warning">
+                ⚠️ No active Spotify device found. 
+                Please open Spotify on your phone, computer, or other device.
+            </div>
+        </div>
+        <div id="spotifyControlsSection" style="display: none;">
+            <h2>♪ Currently Playing</h2>
+            <div id="currentTrackContainer" class="section">
+                <div style="display: flex; gap: 20px; align-items: flex-start;">
+                    <div class="album-art-container">
+                        <img id="albumArtImg" src="/current_album_art" 
+                            class="album-art"
+                            style="display: none;"
+                            onload="handleAlbumArtLoad()"
+                            onerror="handleAlbumArtError()">
+                        <div id="albumArtPlaceholder" class="album-art-placeholder">
+                            🎵
                         </div>
-                        <div id="trackStatus" class="track-status"></div>
                     </div>
-                    <div style="margin-top: 15px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
-                            <span id="trackProgress">0:00</span>
-                            <span id="trackDuration">0:00</span>
+                    <div class="track-info">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div style="flex: 1; min-width: 0;">
+                                <div id="trackTitle" class="track-title">Loading current track...</div>
+                                <div id="trackArtist" class="track-artist"></div>
+                                <div id="trackAlbum" class="track-album"></div>
+                            </div>
+                            <div id="trackStatus" class="track-status"></div>
                         </div>
-                        <div style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative;">
-                            <div id="progressBarContainer" style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative; cursor: pointer;" onclick="seekToPosition(event)">
-                                <div id="progressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), var(--text-primary)); border-radius: 4px; position: relative;">
-                                    <div style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">
+                                <span id="trackProgress">0:00</span>
+                                <span id="trackDuration">0:00</span>
+                            </div>
+                            <div style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative;">
+                                <div id="progressBarContainer" style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative; cursor: pointer;" onclick="seekToPosition(event)">
+                                    <div id="progressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), var(--text-primary)); border-radius: 4px; position: relative;">
+                                        <div style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="section">
-            <h2>♪ Spotify Controls</h2>
-            <div class="spotify-controls" style="display: flex; justify-content: center; gap: 10px; margin: 15px 0;">
-                <button type="button" class="btn-secondary" onclick="spotifyControl('previous')" title="Previous Track">
-                    ⏮ Previous
-                </button>
-                <button type="button" class="btn-success" onclick="spotifyControl('play')" title="Play" id="playBtn">
-                    ▶ Play
-                </button>
-                <button type="button" class="btn-warning" onclick="spotifyControl('pause')" title="Pause" id="pauseBtn">
-                    ⏸ Pause
-                </button>
-                <button type="button" class="btn-secondary" onclick="spotifyControl('next')" title="Next Track">
-                    ⏭ Next
-                </button>
-                <a href="/search_results">
-                    <button type="button" class="btn-secondary" style="width: 100%;">
-                        ⌕ Search Spotify
+            <div class="section">
+                <h2>♪ Spotify Controls</h2>
+                <div class="spotify-controls" style="display: flex; justify-content: center; gap: 10px; margin: 15px 0;">
+                    <button type="button" class="btn-secondary" onclick="spotifyControl('previous')" title="Previous Track">
+                        ⏮ Previous
                     </button>
-                </a>
-            </div>
-            <button type="button" class="btn-secondary" onclick="toggleLyricsDropdown()" title="Show Lyrics">📝 Lyrics</button>
+                    <button type="button" class="btn-success" onclick="spotifyControl('play')" title="Play" id="playBtn">
+                        ▶ Play
+                    </button>
+                    <button type="button" class="btn-warning" onclick="spotifyControl('pause')" title="Pause" id="pauseBtn">
+                        ⏸ Pause
+                    </button>
+                    <button type="button" class="btn-secondary" onclick="spotifyControl('next')" title="Next Track">
+                        ⏭ Next
+                    </button>
+                    <a href="/search_results">
+                        <button type="button" class="btn-secondary" style="width: 100%;">
+                            ⌕ Search Spotify
+                        </button>
+                    </a>
+                </div>
+                <button type="button" class="btn-secondary" onclick="toggleLyricsDropdown()" title="Show Lyrics">📝 Lyrics</button>
                 <div id="lyricsContent" style="max-height: 300px; overflow-y: auto; padding: 10px; background: var(--bg-secondary); border-radius: 5px; white-space: pre-line; line-height: 1.4;"></div>
                 <div id="lyricsStatus" class="status" style="display: none; margin-top: 10px;"></div>
-            </div>
-            <div class="volume-control" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-                <label for="volumeSlider" style="color: var(--text-primary); min-width: 80px;">Volume:</label>
-                <input type="range" id="volumeSlider" min="0" max="100" value="50" 
-                    style="flex: 1; height: 8px; border-radius: 4px; background: var(--border-color);"
-                    onchange="setVolume(this.value)">
-                <span id="volumeValue" style="color: var(--text-primary); min-width: 40px; text-align: center;">50%</span>
+                <div class="volume-control" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+                    <label for="volumeSlider" style="color: var(--text-primary); min-width: 80px;">Volume:</label>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="50" 
+                        style="flex: 1; height: 8px; border-radius: 4px; background: var(--border-color);"
+                        onchange="setVolume(this.value)">
+                    <span id="volumeValue" style="color: var(--text-primary); min-width: 40px; text-align: center;">50%</span>
+                </div>
             </div>
         </div>
         {% endif %}
@@ -590,7 +597,7 @@
     let currentLyricsTrack = '';
     let lastLyricsFetch = 0;
     const LYRICS_COOLDOWN = 1000;
-
+    let spotifyInitialized = false;
     function getRateLimitForAction(action) {
         const limits = {'play': 2500,'pause': 1500,'next': 800,'previous': 800,'volume': 300,'seek': 800};
         return limits[action] || 1000;
@@ -607,6 +614,56 @@
     function completeRequest() {
         isRequestInProgress = false;
     }
+    function checkAndUpdateDeviceStatus() {
+        fetch('/spotify_device_status')
+            .then(response => response.json())
+            .then(data => {
+                const noDeviceMessage = document.getElementById('noDeviceMessage');
+                const spotifyControls = document.getElementById('spotifyControlsSection');
+                if (data.success && data.has_active_device) {
+                    if (noDeviceMessage) noDeviceMessage.style.display = 'none';
+                    if (spotifyControls) spotifyControls.style.display = 'block';
+                    if (!spotifyInitialized) {
+                        initializeSpotifyFeatures();
+                        spotifyInitialized = true;
+                    }
+                } else {
+                    if (noDeviceMessage) noDeviceMessage.style.display = 'block';
+                    if (spotifyControls) spotifyControls.style.display = 'none';
+                    updateNoTrackDisplay();
+                }
+            })
+            .catch(error => {
+                console.error('Error checking device status:', error);
+                // On error, assume no device
+                const noDeviceMessage = document.getElementById('noDeviceMessage');
+                const spotifyControls = document.getElementById('spotifyControlsSection');
+                if (noDeviceMessage) noDeviceMessage.style.display = 'block';
+                if (spotifyControls) spotifyControls.style.display = 'none';
+            });
+    }
+    function initializeSpotifyFeatures() {
+        setupCurrentTrackSSE();
+        fetch('/api/current_track')
+            .then(response => response.json())
+            .then(data => {
+                updateCurrentTrackDisplay(data.track);
+            })
+            .catch(error => {
+                console.error('Error fetching initial track:', error);
+            });
+        const volumeSlider = document.getElementById('volumeSlider');
+        if (volumeSlider) {
+            getCurrentVolume().then(currentVolume => {
+                volumeSlider.value = currentVolume;
+                const volumeValue = document.getElementById('volumeValue');
+                if (volumeValue) {
+                    volumeValue.textContent = currentVolume + '%';
+                }
+            });
+        }
+    }
+    setInterval(checkAndUpdateDeviceStatus, 5000);
     function toggleTheme() {
         const currentTheme = document.body.getAttribute('data-theme');
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -629,9 +686,13 @@
         eventSource.onmessage = function(event) {
             const trackData = JSON.parse(event.data);
             updateCurrentTrackDisplay(trackData);
+            if (!trackData.has_track || trackData.song === 'No track playing') {
+                setTimeout(checkAndUpdateDeviceStatus, 1000);
+            }
         };
         eventSource.onerror = function(event) {
             console.error('Current track SSE error:', event);
+            setTimeout(checkAndUpdateDeviceStatus, 1000);
             setTimeout(setupCurrentTrackSSE, 5000);
         };
         return eventSource;
@@ -1228,50 +1289,12 @@
         if (themeButton) {
             themeButton.innerHTML = savedTheme === 'dark' ? '☀' : '☾';
         }
-        {% if config.settings.enable_current_track_display and spotify_authenticated %}
-        setupCurrentTrackSSE();
-        fetch('/api/current_track')
-            .then(response => response.json())
-            .then(data => {
-                updateCurrentTrackDisplay(data.track);
-            })
-            .catch(error => {
-                console.error('Error fetching initial track:', error);
-            });
-        {% endif %}
+        setInterval(checkAndUpdateDeviceStatus, 5000);
         const progressContainer = document.getElementById('progressBarContainer');
         if (progressContainer) {
             progressContainer.addEventListener('click', seekToPosition);
         }
-        const volumeSlider = document.getElementById('volumeSlider');
-        if (volumeSlider) {
-            getCurrentVolume().then(currentVolume => {
-                volumeSlider.value = currentVolume;
-                const volumeValue = document.getElementById('volumeValue');
-                if (volumeValue) {
-                    volumeValue.textContent = currentVolume + '%';
-                }
-            });
-        }
         resetControlButtons();
-        const statusMessages = document.querySelectorAll('.status');
-        statusMessages.forEach(message => {
-            let hideTime = 5000;
-            if (message.classList.contains('error')) {
-                hideTime = 10000;
-            } else if (message.classList.contains('warning')) {
-                hideTime = 8000;
-            }
-            setTimeout(() => {
-                message.style.opacity = '0';
-                message.style.transition = 'opacity 0.5s ease';
-                setTimeout(() => {
-                    if (message.parentNode) {
-                        message.remove();
-                    }
-                }, 500);
-            }, hideTime);
-        });
         const lyricsContent = document.getElementById('lyricsContent');
         const parentSection = lyricsContent ? lyricsContent.parentNode : null;
         if (parentSection && !parentSection.querySelector('h3')) {
