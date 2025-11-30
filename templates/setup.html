@@ -427,6 +427,7 @@
         🌙
         {% endif %}
     </button>
+    <div id="spotifyControlStatus" class="status" style="display: none; margin-top: 10px;"></div>
     <div class="container">
         <h1><u>NeonDisplay</u></h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -507,7 +508,6 @@
                     onchange="setVolume(this.value)">
                 <span id="volumeValue" style="color: var(--text-primary); min-width: 40px; text-align: center;">50%</span>
             </div>
-            <div id="spotifyControlStatus" class="status" style="display: none; margin-top: 10px;"></div>
         </div>
         <div class="app-controls">
             <div class="control-panel">
@@ -952,25 +952,44 @@
                     statusDiv.className = 'status success';
                     statusDiv.textContent = data.message;
                     updatePlayPauseButtons(action);
+                    setTimeout(() => {
+                        if (statusDiv) {
+                            statusDiv.style.display = 'none';
+                        }
+                    }, 3000);
                 } else {
                     statusDiv.className = 'status error';
-                    statusDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
-                }
-                setTimeout(() => {
-                    if (statusDiv) {
-                        statusDiv.style.display = 'none';
+                    // Make error messages more user-friendly
+                    let errorMsg = data.error || 'Unknown error';
+                    if (errorMsg.includes('NO_ACTIVE_DEVICE') || errorMsg.includes('No active device')) {
+                        errorMsg = 'No active Spotify device found. Please open Spotify on your phone, computer, or other device and try again.';
+                    } else if (errorMsg.includes('internet')) {
+                        errorMsg = 'No internet connection. Please check your network connection.';
                     }
-                }, 3000);
+                    statusDiv.textContent = 'Error: ' + errorMsg;
+                    // Keep error messages visible longer
+                    setTimeout(() => {
+                        if (statusDiv) {
+                            statusDiv.style.display = 'none';
+                        }
+                    }, 8000); // 8 seconds for errors
+                }
             }
         })
         .catch(error => {
             console.error('Spotify control error:', error);
             if (statusDiv) {
                 statusDiv.className = 'status error';
-                statusDiv.textContent = 'Error: ' + error.message;
+                let errorMsg = error.message;
+                if (errorMsg.includes('Failed to fetch') || errorMsg.includes('Network')) {
+                    errorMsg = 'Network error. Please check your internet connection.';
+                }
+                statusDiv.textContent = 'Error: ' + errorMsg;
                 setTimeout(() => {
-                    statusDiv.style.display = 'none';
-                }, 3000);
+                    if (statusDiv) {
+                        statusDiv.style.display = 'none';
+                    }
+                }, 8000);
             }
         })
         .finally(() => {
