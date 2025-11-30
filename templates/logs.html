@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="/static/colors.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>NeonDisplay Logs</title>
     <style>
         body { 
@@ -115,17 +115,18 @@
         let updateInterval;
         let currentTheme = '{{ current_theme }}';
         function toggleTheme() {
-            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            document.body.setAttribute('data-theme', currentTheme);
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
             const btn = document.getElementById('themeBtn');
-            btn.innerHTML = currentTheme === 'dark' ? '☀' : '☾';
+            btn.innerHTML = newTheme === 'dark' ? '☀' : '☾';
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/toggle_theme';
             const themeInput = document.createElement('input');
             themeInput.type = 'hidden';
             themeInput.name = 'theme';
-            themeInput.value = currentTheme;
+            themeInput.value = newTheme;
             form.appendChild(themeInput);
             document.body.appendChild(form);
             form.submit();
@@ -201,11 +202,11 @@
             let coloredHTML = '';
             lines.forEach(line => {
                 let cssClass = 'log-line';
-                if (line.includes('ERROR') || || line.toLowerCase().includes('error')) {
+                if (line.includes('ERROR') || line.toLowerCase().includes('error')) {
                     cssClass += ' log-error';
-                } else if (line.includes('WARNING') || || line.toLowerCase().includes('warning')) {
+                } else if (line.includes('WARNING') || line.toLowerCase().includes('warning')) {
                     cssClass += ' log-warning';
-                } else if (line.includes('INFO') || || line.includes('📍') || || line.includes('🔍') || || || false || line.toLowerCase().includes('info')) {
+                } else if (line.includes('INFO') || line.includes('📍') || line.includes('🔍') || line.toLowerCase().includes('info')) {
                     cssClass += ' log-info';
                 } else if (line.includes('SUCCESS') || line.toLowerCase().includes('success')) {
                     cssClass += ' log-success';

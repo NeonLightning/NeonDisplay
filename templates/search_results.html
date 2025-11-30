@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="/static/colors.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>Search Results - NeonDisplay</title>
     <style>
     body {
@@ -330,6 +330,20 @@
         .refresh-button:hover {
             background: var(--accent-hover);
         }
+        .theme-toggle {
+            background: var(--accent-color);
+            color: var(--text-on-dark);
+            border: 2px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .theme-toggle:hover {
+            background: var(--accent-hover);
+        }
         @media (max-width: 768px) {
             .content-container {
                 grid-template-columns: 1fr;
@@ -344,7 +358,12 @@
     <div class="container">
         <div class="header">
             <h1>⌕ Search Spotify</h1>
-            <a href="/" class="back-button">← Back to Main</a>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <a href="/" class="back-button">← Back to Main</a>
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">
+                    {{ '☀' if ui_config.theme == 'dark' else '☾' }}
+                </button>
+            </div>
         </div>
         <div class="search-container">
             <div class="search-row">
@@ -705,6 +724,24 @@
                 showStatus('Shuffle error: ' + error, 'error');
                 loadShuffleState();
             });
+        }
+        function toggleTheme() {
+            const currentTheme = document.body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.body.setAttribute('data-theme', newTheme);
+            const btn = document.getElementById('themeBtn');
+            btn.innerHTML = newTheme === 'dark' ? '☀' : '☾';
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/toggle_theme';
+            const themeInput = document.createElement('input');
+            themeInput.type = 'hidden';
+            themeInput.name = 'theme';
+            themeInput.value = newTheme;
+            form.appendChild(themeInput);
+            document.body.appendChild(form);
+            form.submit();
         }
         function loadShuffleState() {
             fetch('/spotify_get_shuffle_state')

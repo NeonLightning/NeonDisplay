@@ -16,6 +16,16 @@ def add_header(response):
     return response
 app.secret_key = 'hud-launcher-secret-key'
 
+def get_available_css_files():
+    static_dir = app.static_folder 
+    if not os.path.isdir(static_dir):
+        return ["colors.css"] 
+    css_files = [f for f in os.listdir(static_dir) if f.endswith('.css')]
+    if not css_files:
+        return ["colors.css"] 
+    css_files.sort() 
+    return css_files
+
 CONFIG_PATH = "config.toml"
 DEFAULT_CONFIG = {
     "display": {
@@ -88,7 +98,8 @@ DEFAULT_CONFIG = {
         "max_backup_files": 5
     },
     "ui": {
-        "theme": "dark"
+        "theme": "dark",
+        "css_file": "colors.css"
     }
 }
 
@@ -580,17 +591,7 @@ def toggle_theme():
         config['ui'] = {}
     config['ui']['theme'] = new_theme
     save_config(config)
-    return redirect(url_for('index'))
-
-@app.route('/toggle_themeac', methods=['POST'])
-def toggle_themeac():
-    config = load_config()
-    new_theme = request.form.get('theme', 'dark')
-    if 'ui' not in config:
-        config['ui'] = {}
-    config['ui']['theme'] = new_theme
-    save_config(config)
-    return redirect(url_for('advanced_config'))
+    return redirect(request.referrer or url_for('index'))
 
 @app.route('/save_all_config', methods=['POST'])
 def save_all_config():
@@ -716,6 +717,7 @@ def view_logs():
     ui_config = config.get("ui", {"theme": "dark"})
     current_theme = ui_config.get("theme", "dark")
     log_file = 'neondisplay.log'
+    
     if not os.path.exists(log_file):
         log_content = "Log file does not exist. It will be created when there are log messages.\n\n"
         log_content += f"Log file path: {os.path.abspath(log_file)}"
@@ -724,8 +726,10 @@ def view_logs():
         return render_template('logs.html',
             log_content=log_content,
             lines=lines,
-            current_theme=current_theme
+            current_theme=current_theme,
+            ui_config=ui_config  # Add this line
         )
+    
     try:
         with open(log_file, 'r') as f:
             all_lines = f.readlines()
@@ -736,12 +740,15 @@ def view_logs():
     except Exception as e:
         log_content = f"Error reading log file: {str(e)}\n\n"
         log_content += f"Log file path: {os.path.abspath(log_file)}"
+    
     if live:
         return log_content
+    
     return render_template('logs.html',
         log_content=log_content,
         lines=lines,
-        current_theme=current_theme
+        current_theme=current_theme,
+        ui_config=ui_config  # Add this line
     )
 
 @app.route('/clear_logs', methods=['POST'])
@@ -1305,19 +1312,39 @@ def clear_song_logs():
 @app.route('/advanced_config')
 def advanced_config():
     config = load_config()
-    spotify_configured = bool(config["api_keys"]["client_id"] and config["api_keys"]["client_secret"])
-    spotify_authenticated, _ = check_spotify_auth()
-    ui_config = config.get("ui", {"theme": "dark"})
-    return render_template('advanced_config.html',
-            config=config, 
-            spotify_configured=spotify_configured,
-            spotify_authenticated=spotify_authenticated,
-            ui_config=ui_config
-        )
+    ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
+
+    # 1. Get the dynamic list of CSS files
+    available_css = get_available_css_files()
+    
+    # Ensure the current selection is valid
+    if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
+        ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
+        
+    return render_template(
+        'advanced_config.html',
+        config=config,
+        ui_config=ui_config,
+        available_css=available_css # Pass the dynamic list
+    )
 
 @app.route('/save_advanced_config', methods=['POST'])
 def save_advanced_config():
     config = load_config()
+
+    if "ui" not in config:
+        config["ui"] = {}
+    
+    # 2. Get the dynamic list and the selection from the form
+    available_css = get_available_css_files()
+    selected_css = request.form.get('css_file')
+    
+    # Save the selected file only if it is in the dynamic list of available files
+    if selected_css and selected_css in available_css:
+        config["ui"]["css_file"] = selected_css
+    else:
+        # Fallback if invalid data is somehow submitted
+        config["ui"]["css_file"] = DEFAULT_CONFIG["ui"]["css_file"]
     try:
         config["api_keys"]["openweather"] = request.form.get('openweather', '').strip()
         config["api_keys"]["google_geo"] = request.form.get('google_geo', '').strip()

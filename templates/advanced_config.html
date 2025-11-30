@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="/static/colors.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>Advanced Configuration - NeonDisplay Launcher</title>
     <style>
         body {
@@ -110,15 +110,15 @@
             transform: translateY(-2px);
         }
         .btn-secondary {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
+            background: var(--button-secondary-bg);
+            color: var(--button-secondary-text);
         }
         .btn-success {
-            background: var(--success-color);
-            color: var(--text-on-dark);
+            background: var(--success-border);
+            color: var(--success-color);
         }
         .btn-danger {
-            background: var(--error-bg);
+            background: var(--error-border);
             color: var(--text-on-dark);
         }
         .status {
@@ -417,6 +417,20 @@
                 </div>
             </div>
             <div class="section">
+                <h2>🎨 UI Configuration</h2>
+                <div class="form-group">
+                    <label for="css_file">Select CSS Theme:</label>
+                    <select id="css_file" name="css_file" class="form-control">
+                        {% for file in available_css %}
+                        <option value="{{ file }}" {% if ui_config.css_file == file %}selected{% endif %}>
+                            {{ file.replace('.css', '').replace('_', ' ').title() }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small>Choose a different CSS file to change the look and feel of the web interface. Files are loaded dynamically from the <code>static/</code> folder.</small>
+                </div>
+            </div>
+            <div class="section">
                 <h2>▣ Font Configuration</h2>
                 <div class="font-config">
                     <div class="font-group">
@@ -581,7 +595,7 @@
             button.innerHTML = newTheme === 'dark' ? '☀️' : '🌙';
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = '/toggle_themeac';
+            form.action = '/toggle_theme';
             const themeInput = document.createElement('input');
             themeInput.type = 'hidden';
             themeInput.name = 'theme';

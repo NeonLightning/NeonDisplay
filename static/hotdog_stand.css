@@ -1,0 +1,53 @@
+/* Dark theme (default) */
+:root {
+    --bg-primary: #1a0000;
+    --bg-secondary: #4d4d00;
+    --bg-tertiary: #330000;
+    --text-primary: #ffff00;
+    --text-secondary: #ffcc00;
+    --accent-color: #ff0000;
+    --accent-hover: #cc0000;
+    --border-color: #ff0000;
+    --success-bg: #4d4d00;
+    --success-border: #ffff00;
+    --error-bg: #660000;
+    --error-border: #ff0000;
+    --warning-bg: #663300;
+    --warning-border: #ff6600;
+    --info-bg: #330000;
+    --info-border: #ff0000;
+    --card-bg: #4d4d00;
+    --log-bg: #000000;
+    --success-color: #866b00;
+    --warning-color: #ff9900;
+    --text-on-dark: #FFFFFF;
+    --text-on-light: #000000;
+    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
+}
+
+/* Light theme */
+[data-theme="light"] {
+    --bg-primary: #ffff00;
+    --bg-secondary: #ff0000;
+    --bg-tertiary: #ffcc00;
+    --text-primary: #000000;
+    --text-secondary: #4d0000;
+    --accent-color: #ff0000;
+    --accent-hover: #cc0000;
+    --border-color: #000000;
+    --success-bg: #ff0000;
+    --success-border: #000000;
+    --error-bg: #990000;
+    --error-border: #000000;
+    --warning-bg: #ff6600;
+    --warning-border: #000000;
+    --info-bg: #ff6666;
+    --info-border: #000000;
+    --card-bg: #ff0000;
+    --log-bg: #ff0000;
+    --success-color: #ffcc00;
+    --warning-color: #ff6600;
+    --text-on-dark: #FFFFFF;
+    --text-on-light: #000000;
+    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
+}
