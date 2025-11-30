@@ -543,9 +543,11 @@
             </div>
         </div>
         <div class="section">
-            <a href="/music_stats">
-                <button type="button" class="btn-secondary">▥ Music Statistics</button>
-            </a>
+            {% if config.settings.enable_current_track_display and spotify_authenticated  %}
+                <a href="/music_stats">
+                    <button type="button" class="btn-secondary">▥ Music Statistics</button>
+                </a>
+            {% endif %}
             <a href="/advanced_config">
                 <button type="button" class="btn-secondary">⚙ Advanced Configuration</button>
             </a>
