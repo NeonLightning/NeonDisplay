@@ -20,6 +20,9 @@
     --log-bg: #000000;
     --success-color: #009900;
     --warning-color: #ff9900;
+    --text-on-dark: #FFFFFF;
+    --text-on-light: #000000;
+    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
 }
 
 /* Light theme */
@@ -44,4 +47,7 @@
     --log-bg: #ff0000;
     --success-color: #00cc00;
     --warning-color: #ff6600;
+    --text-on-dark: #FFFFFF;
+    --text-on-light: #000000;
+    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
 }

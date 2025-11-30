@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>Spotify Authentication</title>
-    <link rel="stylesheet" href="colors.css">
+    <link rel="stylesheet" href="/static/colors.css">
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -11,6 +11,10 @@
             padding: 20px;
             background: var(--bg-primary);
             color: var(--text-primary);
+        }
+        h2 {
+            color: var(--text-primary);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
         }
         .container {
             background: var(--bg-secondary);
@@ -41,6 +45,10 @@
             font-weight: bold; 
             cursor: pointer;
         }
+        .styled-button:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
         a {
             color: var(--accent-color);
             font-weight: bold;
@@ -60,7 +68,7 @@
             <textarea name="callback_url" placeholder="Paste the callback URL here..." class="styled-textarea"></textarea>
             <button type="submit" class="styled-button">Process Authentication</button>
         </form>
-        <p><a href="/">← Back to setup</a></p>
+        <p><a href="/">← Back to Config</a></p>
     </div>
 </body>
 </html>

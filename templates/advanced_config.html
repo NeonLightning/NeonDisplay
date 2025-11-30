@@ -25,13 +25,14 @@
             text-align: center;
             color: var(--text-primary);
             margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
         .section {
             background: var(--bg-tertiary);
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 30px;
-            border-left: 4px solid var(--accent-color);
+            border: 2px solid var(--border-color);
         }
         .section h2 {
             margin-top: 0;
@@ -51,16 +52,18 @@
         input[type="text"], input[type="number"], input[type="password"], textarea, select {
             width: 100%;
             padding: 10px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             box-sizing: border-box;
             font-size: 16px;
             background: var(--bg-secondary);
             color: var(--text-primary);
+            transition: all 0.3s ease;
         }
         input[type="text"]:focus, input[type="number"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
             border-color: var(--accent-color);
             outline: none;
+            box-shadow: 0 0 8px var(--accent-color);
         }
         .instructions a {
             color: var(--text-primary);
@@ -73,10 +76,12 @@
         }
         .toggle-switch input[type="checkbox"] {
             margin-right: 10px;
-            transform: scale(1.2);
+            transform: scale(1.5);
+            cursor: pointer;
         }
         .toggle-switch label {
             margin-bottom: 0;
+            cursor: pointer;
         }
         small {
             color: var(--text-secondary);
@@ -90,26 +95,31 @@
         }
         button {
             background: var(--accent-color);
-            color: white;
-            border: none;
+            color: var(--text-on-dark);
+            border: 2px solid var(--border-color);
             padding: 12px 20px;
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
             margin: 5px;
             transition: all 0.3s ease;
+            font-weight: bold;
         }
         button:hover {
             background: var(--accent-hover);
+            transform: translateY(-2px);
         }
         .btn-secondary {
-            background: #6c757d;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
         }
         .btn-success {
-            background: #28a745;
+            background: var(--success-color);
+            color: var(--text-on-dark);
         }
         .btn-danger {
-            background: #dc3545;
+            background: var(--error-bg);
+            color: var(--text-on-dark);
         }
         .status {
             padding: 10px;
@@ -120,24 +130,25 @@
         .status.success {
             background: var(--success-bg);
             color: var(--text-primary);
-            border: 1px solid var(--success-border);
+            border: 2px solid var(--success-border);
         }
         .status.error {
             background: var(--error-bg);
-            color: var(--text-primary);
-            border: 1px solid var(--error-border);
+            color: var(--text-on-dark);
+            border: 2px solid var(--error-border);
         }
         .theme-toggle {
             position: fixed;
             top: 20px;
             right: 20px;
             background: var(--accent-color);
-            color: white;
-            border: none;
+            color: var(--text-on-dark);
+            border: 2px solid var(--border-color);
             padding: 8px 12px;
             border-radius: 20px;
             cursor: pointer;
             font-size: 12px;
+            font-weight: bold;
             z-index: 1000;
         }
         .button-grid {
@@ -150,7 +161,7 @@
             background: var(--bg-secondary);
             padding: 15px;
             border-radius: 8px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
         }
         .button-config h4 {
             margin-top: 0;
@@ -165,7 +176,7 @@
             background: var(--bg-secondary);
             padding: 15px;
             border-radius: 8px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
         }
         .instructions {
             background: var(--info-bg);
@@ -173,8 +184,8 @@
             border-radius: 5px;
             margin-bottom: 15px;
             font-size: 14px;
-            color: var(--text-primary);
-            border: 1px solid var(--info-border);
+            color: var(--text-on-dark);
+            border: 2px solid var(--info-border);
         }
     </style>
 </head>
@@ -187,7 +198,7 @@
         {% endif %}
     </button>
     <div class="container">
-        <h1>⚙️ Advanced Configuration</h1>
+        <h1>⚙ Advanced Configuration</h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -197,21 +208,21 @@
         {% endwith %}
         <form method="POST" action="/save_advanced_config">
             <div class="section">
-                <h2>🔑 API Configuration</h2>
+                <h2>■ API Configuration</h2>
                 <div class="instructions">
                     <p><strong>Get your API keys:</strong></p>
-                    <p>• <a href="https://openweathermap.org/api" target="_blank">OpenWeatherMap</a> - Free weather API</p>
-                    <p>• <a href="https://developers.google.com/maps/documentation/geolocation" target="_blank">Google Geolocation API</a> - Optional, for precise location</p>
-                    <p>• <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a> - For music integration</p>
+                    <p>▪ <a href="https://openweathermap.org/api" target="_blank">OpenWeatherMap</a> - Free weather API</p>
+                    <p>▪ <a href="https://developers.google.com/maps/documentation/geolocation" target="_blank">Google Geolocation API</a> - Optional, for precise location</p>
+                    <p>▪ <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a> - For music integration</p>
                 </div>
                 {% if spotify_configured %}
                     {% if spotify_authenticated %}
                     <div class="status success">
-                        <p>✅ Spotify is authenticated!</p>
+                        <p>✓ Spotify is authenticated!</p>
                     </div>
                     {% else %}
                     <div class="status warning">
-                        <p>⚠️ Spotify credentials saved but not authenticated.</p>
+                        <p>△ Spotify credentials saved but not authenticated.</p>
                         <a href="/spotify_auth">
                             <button type="button" class="btn-warning">🔑 Authenticate Spotify</button>
                         </a>
@@ -250,7 +261,7 @@
                 </div>
             </div>
             <div class="section">
-                <h2>📍 Location & Display Settings</h2>
+                <h2>● Location & Display Settings</h2>
                 <div class="location-settings">
                     <h3>Location Services</h3>
                     <div class="config-grid">
@@ -336,7 +347,7 @@
                 </div>
             </div>
             <div class="section">
-                <h2>🖥️ ST7789 Display Configuration</h2>
+                <h2>□ ST7789 Display Configuration</h2>
                 <div class="config-grid">
                     <div>
                         <div class="form-group">
@@ -406,7 +417,7 @@
                 </div>
             </div>
             <div class="section">
-                <h2>🔤 Font Configuration</h2>
+                <h2>▣ Font Configuration</h2>
                 <div class="font-config">
                     <div class="font-group">
                         <h3>Main Display Fonts</h3>
@@ -470,7 +481,7 @@
                 </div>
             </div>
             <div class="section">
-                <h2>📶 WiFi Configuration</h2>
+                <h2>◉ WiFi Configuration</h2>
                 <div class="config-grid">
                     <div>
                         <div class="form-group">
@@ -496,7 +507,7 @@
                 </div>
             </div>
             <div class="section">
-                <h2>🎮 Button Configuration</h2>
+                <h2>▢ Button Configuration</h2>
                 <div class="button-grid">
                     <div class="button-config">
                         <h4>Button A</h4>
@@ -532,7 +543,7 @@
                     </div>
                 </div>
             </div>
-            <div class="section"><h2>📝 Logging Configuration</h2>
+            <div class="section"><h2>▤ Logging Configuration</h2>
                 <div class="config-grid">
                     <div>
                         <div class="form-group">
@@ -555,9 +566,9 @@
                 </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">
-                <button type="submit" class="btn-success">💾 Save Advanced Configuration</button>
+                <button type="submit" class="btn-success">▣ Save Advanced Configuration</button>
                 <button type="button" class="btn-secondary" onclick="location.href='/'">← Back to Main</button>
-                <button type="button" class="btn-danger" onclick="resetToDefaults()">🔄 Reset to Defaults</button>
+                <button type="button" class="btn-danger" onclick="resetToDefaults()">↻ Reset to Defaults</button>
             </div>
         </form>
     </div>
@@ -590,7 +601,7 @@
         function updateDisplayConfig() {
             const displayType = document.getElementById('display_type').value;
             const st7789Config = document.querySelectorAll('[id*="spi_"], [id*="dc_"], [id*="backlight_"]');
-            const st7789Section = document.querySelector('.section:nth-child(3)'); // ST7789 section
+            const st7789Section = document.querySelector('.section:nth-child(3)');
             if (displayType === 'st7789') {
                 st7789Section.style.display = 'block';
                 st7789Config.forEach(element => {

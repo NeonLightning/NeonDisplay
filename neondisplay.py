@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from flask import Flask, request, redirect, url_for, flash, Response, render_template, send_file
+from flask import Flask, request, redirect, url_for, flash, Response, render_template, send_file, jsonify
 from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime
 from collections import Counter
@@ -1132,6 +1132,93 @@ def spotify_get_queue():
         logger.error(f"Spotify get queue error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
+@app.route('/spotify_toggle_shuffle', methods=['POST'])
+@rate_limit(0.5)
+def spotify_toggle_shuffle():
+    logger = logging.getLogger('Launcher')
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        current_state = sp.current_playback()
+        if not current_state:
+            return jsonify({'success': False, 'error': 'No active Spotify device found.'})
+        current_shuffle_state = current_state.get('shuffle_state', False)
+        requested_state = request.json.get('state', not current_shuffle_state)
+        if current_shuffle_state != requested_state:
+            sp.shuffle(requested_state)
+        time.sleep(0.5)
+        updated_state = sp.current_playback()
+        actual_new_state = updated_state.get('shuffle_state', False) if updated_state else False
+        action = "Shuffle Enabled" if actual_new_state else "Shuffle Disabled"
+        logger.info(f"🔀 {action}")
+        return jsonify({
+            'success': True, 
+            'message': action,
+            'new_state': actual_new_state
+        })
+    except Exception as e:
+        error_message = f"Spotify shuffle error: {str(e)}"
+        logger.error(error_message)
+        return jsonify({'success': False, 'error': error_message})
+
+@app.route('/spotify_get_shuffle_state', methods=['GET'])
+def spotify_get_shuffle_state():
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'is_shuffling': False, 'error': message})
+        current_state = sp.current_playback()
+        if current_state and 'shuffle_state' in current_state:
+            is_shuffling = current_state.get('shuffle_state', False)
+            return jsonify({'is_shuffling': is_shuffling})
+        else:
+            return jsonify({'is_shuffling': False})
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting shuffle state: {e}")
+        return jsonify({'is_shuffling': False})
+
+@app.route('/spotify_shuffle_queue', methods=['POST'])
+@rate_limit(0.5)
+def spotify_shuffle_queue():
+    logger = logging.getLogger('Launcher')
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        current_state = sp.current_playback()
+        shuffle_state = not current_state.get('shuffle_state', False) if current_state else True
+        sp.shuffle(shuffle_state)
+        action = "Enabled shuffle" if shuffle_state else "Disabled shuffle"
+        logger.info(f"🔀 {action}")
+        return jsonify({'success': True, 'message': f'{action} for playback.'})
+    except Exception as e:
+        error_message = f"Spotify shuffle error: {str(e)}"
+        logger.error(error_message)
+        return jsonify({'success': False, 'error': error_message})
+
+@app.route('/spotify_play_playlist', methods=['POST'])
+@rate_limit(0.5)
+def spotify_play_context():
+    logger = logging.getLogger('Launcher')
+    try:
+        context_uri = request.json.get('uri')
+        name = request.json.get('name', 'Unknown Context')
+        sp, message = get_spotify_client()
+        if not sp:
+            flash(message, 'error')
+            return jsonify({'success': False, 'error': message})
+        sp.start_playback(context_uri=context_uri)
+        logger.info(f"▶ Started playback of context: {name} ({context_uri})")
+        flash(f'Playing: {name}', 'success')
+        return jsonify({'success': True, 'message': f'Started playing {name}'})
+    except Exception as e:
+        error_message = f"Spotify play context error: {str(e)}"
+        logger.error(error_message)
+        flash(f'Error playing playlist/context: {str(e)}', 'error')
+        return jsonify({'success': False, 'error': error_message})
+
 @app.route('/spotify_play_track', methods=['POST'])
 @rate_limit(0.5)
 def spotify_play_track():
@@ -1149,6 +1236,37 @@ def spotify_play_track():
         logger.error(f"Spotify play track error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
+@app.route('/spotify_search_playlist', methods=['POST'])
+@rate_limit(1.0)
+def spotify_search_playlist():
+    logger = logging.getLogger('Launcher')
+    try:
+        query = request.json.get('query', '').strip()
+        if not query:
+            return jsonify({'success': False, 'error': 'No search query provided'})
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        results = sp.search(q=query, type='playlist', limit=20)
+        playlists = []
+        if results and 'playlists' in results and results['playlists']['items']:
+            for item in results['playlists']['items']:
+                if not item: continue
+                image_url = None
+                if item['images']:
+                    image_url = item['images'][0]['url']
+                playlists.append({
+                    'name': item['name'],
+                    'owner': item['owner']['display_name'],
+                    'tracks_total': item['tracks']['total'],
+                    'uri': item['uri'],
+                    'image_url': image_url
+                })
+        return jsonify({'success': True, 'playlists': playlists})
+    except Exception as e:
+        logger.error(f"Spotify playlist search error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/search_results')
 def search_results():
     config = load_config()
@@ -1159,9 +1277,15 @@ def search_results():
         tracks = json.loads(tracks_json)
     except:
         tracks = []
+    playlists_json = request.args.get('playlists', '[]')
+    try:
+        playlists = json.loads(playlists_json)
+    except:
+        playlists = []
     return render_template('search_results.html', 
                         query=query, 
                         tracks=tracks,
+                        playlists=playlists,
                         ui_config=ui_config)
 
 @app.route('/clear_song_logs', methods=['POST'])

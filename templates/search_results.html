@@ -4,7 +4,7 @@
     <link rel="stylesheet" href="/static/colors.css">
     <title>Search Results - NeonDisplay</title>
     <style>
-        body {
+    body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
@@ -24,35 +24,49 @@
             padding: 15px;
             background: var(--bg-secondary);
             border-radius: 8px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
         }
-        .search-box {
+        .search-container {
             display: flex;
+            flex-direction: column;
             gap: 10px;
             margin-bottom: 20px;
         }
-        .search-box input {
-            flex: 1;
+        .search-row {
+            display: flex;
+            gap: 10px;
+        }
+        .search-row input {
+            flex: 3;
             padding: 12px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             background: var(--bg-secondary);
             color: var(--text-primary);
             font-size: 16px;
+            transition: all 0.3s ease;
         }
-        .search-box button {
+        .search-row input:focus {
+            border-color: var(--accent-color);
+            outline: none;
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+        .search-row button {
+            flex: 1;
             padding: 12px 20px;
             background: var(--accent-color);
-            color: white;
-            border: none;
+            color: var(--text-on-dark);
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
+            font-weight: bold;
+            min-width: unset;
         }
-        .search-box button:hover {
+        .search-row button:hover {
             background: var(--accent-hover);
         }
-        .search-box button:disabled {
+        .search-row button:disabled {
             background: var(--border-color);
             cursor: not-allowed;
         }
@@ -62,18 +76,18 @@
             gap: 20px;
             align-items: start;
         }
+        .results-container, .queue-container {
+            border: 2px solid var(--border-color);
+        }
         .results-container {
             max-height: 70vh;
             overflow-y: auto;
             background: var(--bg-secondary);
             border-radius: 8px;
-            border: 1px solid var(--border-color);
         }
         .queue-container {
             background: var(--bg-secondary);
             border-radius: 8px;
-            border: 1px solid var(--border-color);
-            padding: 15px;
             max-height: 70vh;
             overflow-y: auto;
         }
@@ -84,6 +98,30 @@
             margin-bottom: 15px;
             padding-bottom: 10px;
             border-bottom: 2px solid var(--accent-color);
+            gap: 10px;
+        }
+        .queue-header button {
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            flex-shrink: 0;
+            border: none;
+            color: var(--text-on-dark);
+            min-width: unset;
+        }
+        .refresh-button {
+            background: var(--accent-color);
+        }
+        .shuffle-button {
+            background: var(--accent-color);
+        }
+        .shuffle-button.active {
+            background: var(--success-color);
+        }
+        .queue-header button:hover {
+            filter: brightness(1.1);
         }
         .result-item {
             display: flex;
@@ -114,17 +152,17 @@
             border-bottom: none;
         }
         .queue-item.current {
-            background: var(--success-color);
-            color: white;
+            background: var(--bg-tertiary);
+            color: var(--text-on-dark);
             border-radius: 6px;
             margin: 5px 0;
         }
         .queue-item.current .track-name {
-            color: white;
+            color: var(--text-on-dark);
         }
         .queue-item.current .track-artists,
         .queue-item.current .track-album {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--text-secondary-on-dark, var(--text-on-dark)); 
         }
         .track-art {
             width: 60px;
@@ -139,6 +177,9 @@
             border-radius: 4px;
             object-fit: cover;
             flex-shrink: 0;
+        }
+        .track-art, .queue-art {
+            border: 2px solid var(--border-color);
         }
         .track-art-placeholder {
             width: 60px;
@@ -164,11 +205,7 @@
             font-size: 14px;
             flex-shrink: 0;
         }
-        .track-info {
-            flex: 1;
-            min-width: 0;
-        }
-        .queue-info {
+        .track-info, .queue-info {
             flex: 1;
             min-width: 0;
         }
@@ -190,32 +227,9 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .track-artists {
-            color: var(--text-secondary);
-            font-size: 14px;
-            margin-bottom: 3px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .queue-artists {
+        .track-artists, .track-album, .queue-artists, .queue-album {
             color: var(--text-secondary);
             font-size: 12px;
-            margin-bottom: 2px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .track-album {
-            color: var(--text-secondary);
-            font-size: 12px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .queue-album {
-            color: var(--text-secondary);
-            font-size: 11px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -225,10 +239,19 @@
             gap: 8px;
             flex-shrink: 0;
         }
+        .playlist-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .playlist-owner {
+            color: var(--accent-color);
+            font-weight: bold;
+        }
         .play-button {
             padding: 8px 16px;
             background: var(--accent-color);
-            color: white;
+            color: var(--text-on-dark);
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -241,7 +264,7 @@
         .queue-button {
             padding: 8px 12px;
             background: var(--warning-color);
-            color: #212529;
+            color: var(--text-on-light);
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -249,7 +272,7 @@
             white-space: nowrap;
         }
         .queue-button:hover {
-            background: #e0a800;
+            background: var(--warning-border);
         }
         .play-button:disabled,
         .queue-button:disabled {
@@ -261,25 +284,27 @@
             border-radius: 5px;
             margin: 10px 0;
             text-align: center;
+            border: 2px solid;
+            font-weight: bold;
         }
         .status.info {
-            background: #004085;
-            color: white;
-            border: 1px solid #b3d7ff;
+            background: var(--info-bg);
+            color: var(--text-on-dark);
+            border-color: var(--info-border);
         }
         .status.success {
-            background: #155724;
-            color: white;
-            border: 1px solid #c3e6cb;
+            background: var(--success-bg);
+            color: var(--text-primary);
+            border-color: var(--success-border);
         }
         .status.error {
-            background: #721c24;
-            color: white;
-            border: 1px solid #f5c6cb;
+            background: var(--error-bg);
+            color: var(--text-on-dark);
+            border-color: var(--error-border);
         }
         .back-button {
-            background: #6c757d;
-            color: white;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
             border: none;
             padding: 10px 15px;
             border-radius: 5px;
@@ -288,7 +313,7 @@
             display: inline-block;
         }
         .back-button:hover {
-            background: #5a6268;
+            background: var(--bg-secondary);
         }
         .empty-state {
             padding: 40px;
@@ -301,12 +326,6 @@
         }
         .refresh-button {
             background: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
         }
         .refresh-button:hover {
             background: var(--accent-hover);
@@ -316,7 +335,7 @@
                 grid-template-columns: 1fr;
             }
             .queue-container {
-                max-height: 300px;
+                max-height: 70vh;
             }
         }
     </style>
@@ -324,65 +343,89 @@
 <body data-theme="{{ ui_config.theme }}">
     <div class="container">
         <div class="header">
-            <h1>🔍 Search Spotify</h1>
-            <a href="/" class="back-button">← Back to Launcher</a>
+            <h1>⌕ Search Spotify</h1>
+            <a href="/" class="back-button">← Back to Main</a>
         </div>
-        
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Search for songs, artists, albums..." value="{{ query }}">
-            <button onclick="performSearch()" id="searchBtn">🔍 Search</button>
-        </div>
-        
-        <div id="searchStatus" class="status" style="display: none;"></div>
-        
-        <div class="content-container">
-            <div class="results-container">
-                {% if tracks %}
-                    {% for track in tracks %}
-                    <div class="result-item">
-                        {% if track.image_url %}
-                        <img src="{{ track.image_url }}" class="track-art" alt="{{ track.album }}">
-                        {% else %}
-                        <div class="track-art-placeholder">🎵</div>
-                        {% endif %}
-                        <div class="track-info">
-                            <div class="track-name">{{ track.name }}</div>
-                            <div class="track-artists">{{ track.artists }}</div>
-                            <div class="track-album">{{ track.album }} • {{ track.duration }}</div>
-                        </div>
-                        <div class="track-actions">
-                            <button class="queue-button" onclick="addToQueue('{{ track.uri }}', '{{ track.name|escape }}')">➕ Add to Queue</button>
-                            <button class="play-button" onclick="playTrack('{{ track.uri }}', '{{ track.name|escape }}')">▶ Play Now</button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-state">
-                        <div class="empty-icon">🎵</div>
-                        <div>Enter a search term to find music</div>
-                    </div>
-                {% endif %}
+        <div class="search-container">
+            <div class="search-row">
+                <input type="text" id="searchInput" placeholder="Search for songs..." value="">
+                <button onclick="performSearch()" id="searchBtn">⌕ Search Songs</button>
             </div>
             
-            <div class="queue-container">
-                <div class="queue-header">
-                    <h3>🎵 Current Queue</h3>
-                    <button class="refresh-button" onclick="loadQueue()">🔄 Refresh</button>
+            <div class="search-row">
+                <input type="text" id="playlistInput" placeholder="Search for playlists..." value="">
+                <button onclick="performPlaylistSearch()" id="playlistBtn">⌕ Search Playlists</button>
+            </div>
+        </div>
+        <div id="searchStatus" class="status" style="display: none;"></div>
+            <div class="content-container">
+                <div class="results-container">
+                    {% if playlists %}
+                        {% for playlist in playlists %}
+                        <div class="result-item">
+                            {% if playlist.image_url %}
+                            <img src="{{ playlist.image_url }}" class="track-art" alt="{{ playlist.name }}">
+                            {% else %}
+                            <div class="track-art-placeholder">♪</div>
+                            {% endif %}
+                            <div class="track-info">
+                                <div class="track-name">{{ playlist.name }}</div>
+                                <div class="playlist-meta">
+                                    by <span class="playlist-owner">{{ playlist.owner }}</span> • {{ playlist.tracks_total }} tracks
+                                </div>
+                            </div>
+                            <div class="track-actions">
+                                <button class="play-button" onclick="playPlaylist('{{ playlist.uri }}', '{{ playlist.name|e }}')">▶ Play Playlist</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% elif tracks %}
+                        {% for track in tracks %}
+                        <div class="result-item">
+                            {% if track.image_url %}
+                            <img src="{{ track.image_url }}" class="track-art" alt="{{ track.album }}">
+                            {% else %}
+                            <div class="track-art-placeholder">♪</div>
+                            {% endif %}
+                            <div class="track-info">
+                                <div class="track-name">{{ track.name }}</div>
+                                <div class="track-artists">{{ track.artists }}</div>
+                                <div class="track-album">{{ track.album }} • {{ track.duration }}</div>
+                            </div>
+                            <div class="track-actions">
+                                <button class="queue-button" onclick="addToQueue('{{ track.uri }}', '{{ track.name|e }}')">+ Add to Queue</button>
+                                <button class="play-button" onclick="playTrack('{{ track.uri }}', '{{ track.name|e }}')">▶ Play Now</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state">
+                            <div class="empty-icon">♪</div>
+                            <div>Enter a search term to find music or playlists</div>
+                        </div>
+                    {% endif %}
                 </div>
-                <div id="queueList">
-                    <div class="empty-state">
-                        <div class="empty-icon">⏳</div>
-                        <div>Loading queue...</div>
+                <div class="queue-container">
+                    <div class="queue-header">
+                        <h3>♪ Current Queue</h3>
+                        <button id="shuffleBtn" onclick="toggleShuffle()" class="shuffle-button" data-state="0">
+                            ⧓ Shuffle OFF
+                        </button>
+                        <button class="refresh-button" onclick="loadQueue()">↻ Refresh</button>
+                    </div>
+                    <div id="queueList">
+                        <div class="empty-state">
+                            <div class="empty-icon">⏳</div>
+                            <div>Loading queue...</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
     <script>
         let lastRequestTime = 0;
         let isRequestInProgress = false;
-        
         function getRateLimitForAction(action) {
             const limits = {
                 'play': 2000,
@@ -391,7 +434,6 @@
             };
             return limits[action] || 1000;
         }
-        
         function canMakeRequest(action) {
             if (isRequestInProgress) return false;
             const now = Date.now();
@@ -401,28 +443,33 @@
             lastRequestTime = now;
             return true;
         }
-        
         function completeRequest() {
             isRequestInProgress = false;
         }
-        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('searchStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            clearTimeout(statusDiv.timer);
+            statusDiv.timer = setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 4000); 
+        }
         function performSearch() {
             const query = document.getElementById('searchInput').value.trim();
             if (!query) {
                 showStatus('Please enter a search term', 'error');
                 return;
             }
-            
             if (!canMakeRequest('search')) {
                 showStatus('Please wait before searching again', 'error');
                 return;
             }
-            
             const searchBtn = document.getElementById('searchBtn');
             searchBtn.disabled = true;
             searchBtn.textContent = 'Searching...';
             showStatus('Searching...', 'info');
-            
             fetch('/spotify_search', {
                 method: 'POST',
                 headers: {
@@ -444,30 +491,26 @@
             .finally(() => {
                 completeRequest();
                 searchBtn.disabled = false;
-                searchBtn.textContent = '🔍 Search';
+                searchBtn.textContent = '⌕ Search Songs';
             });
         }
-        
         function playTrack(trackUri, trackName) {
             if (!canMakeRequest('play')) {
                 showStatus('Please wait before playing another track', 'error');
                 return;
             }
-            
             showStatus(`Playing "${trackName}"...`, 'info');
-            
             fetch('/spotify_play_track', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ track_uri: trackUri })
+                body: JSON.stringify({ uri: trackUri }) 
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     showStatus(`Now playing "${trackName}"!`, 'success');
-                    // Refresh queue to show the new current track
                     setTimeout(loadQueue, 1000);
                 } else {
                     showStatus('Play failed: ' + data.error, 'error');
@@ -478,32 +521,25 @@
             })
             .finally(() => {
                 completeRequest();
-                setTimeout(() => {
-                    document.getElementById('searchStatus').style.display = 'none';
-                }, 3000);
             });
         }
-        
         function addToQueue(trackUri, trackName) {
             if (!canMakeRequest('queue')) {
                 showStatus('Please wait before adding another track', 'error');
                 return;
             }
-            
             showStatus(`Adding "${trackName}" to queue...`, 'info');
-            
             fetch('/spotify_add_to_queue', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ track_uri: trackUri })
+                body: JSON.stringify({ uri: trackUri })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     showStatus(`"${trackName}" added to queue!`, 'success');
-                    // Refresh queue to show the new track
                     setTimeout(loadQueue, 1000);
                 } else {
                     showStatus('Add to queue failed: ' + data.error, 'error');
@@ -514,18 +550,13 @@
             })
             .finally(() => {
                 completeRequest();
-                setTimeout(() => {
-                    document.getElementById('searchStatus').style.display = 'none';
-                }, 3000);
             });
         }
-        
         function loadQueue() {
             fetch('/spotify_get_queue')
                 .then(response => response.json())
                 .then(data => {
                     const queueList = document.getElementById('queueList');
-                    
                     if (data.success && data.queue && data.queue.length > 0) {
                         let queueHTML = '';
                         data.queue.forEach((track, index) => {
@@ -534,14 +565,14 @@
                                 <div class="${itemClass}">
                                     ${track.image_url ? 
                                         `<img src="${track.image_url}" class="queue-art" alt="${track.album}">` :
-                                        `<div class="queue-art-placeholder">${track.is_current ? '▶' : '🎵'}</div>`
+                                        `<div class="queue-art-placeholder">${track.is_current ? '▶' : '♪'}</div>`
                                     }
                                     <div class="queue-info">
                                         <div class="queue-name">${track.name}</div>
                                         <div class="queue-artists">${track.artists}</div>
                                         <div class="queue-album">${track.album}</div>
                                     </div>
-                                    ${track.is_current ? '<div style="color: white; font-size: 12px; font-weight: bold;">NOW PLAYING</div>' : ''}
+                                    ${track.is_current ? '<div style="color: var(--text-on-light); font-size: 12px; font-weight: bold;">NOW PLAYING</div>' : ''}
                                 </div>
                             `;
                         });
@@ -560,34 +591,147 @@
                     const queueList = document.getElementById('queueList');
                     queueList.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-icon">❌</div>
+                            <div class="empty-icon">✕</div>
                             <div>Error loading queue</div>
                             <div style="font-size: 12px; margin-top: 10px;">${error.message}</div>
                         </div>
                     `;
                 });
         }
-        
-        function showStatus(message, type) {
-            const statusDiv = document.getElementById('searchStatus');
-            statusDiv.textContent = message;
-            statusDiv.className = `status ${type}`;
-            statusDiv.style.display = 'block';
+        function performPlaylistSearch() {
+            const query = document.getElementById('playlistInput').value.trim();
+            if (!query) {
+                showStatus('Please enter a playlist name', 'error');
+                return;
+            }
+            if (!canMakeRequest('search')) {
+                showStatus('Please wait before searching again', 'error');
+                return;
+            }
+            const playlistBtn = document.getElementById('playlistBtn');
+            playlistBtn.disabled = true;
+            playlistBtn.textContent = 'Searching...';
+            showStatus('Searching playlists...', 'info');
+            fetch('/spotify_search_playlist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query: query })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = `/search_results?query=${encodeURIComponent(query)}&playlists=${encodeURIComponent(JSON.stringify(data.playlists))}`;
+                } else {
+                    showStatus('Search failed: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Search error: ' + error, 'error');
+            })
+            .finally(() => {
+                completeRequest();
+                playlistBtn.disabled = false;
+                playlistBtn.textContent = '⌕ Search Playlists';
+            });
         }
-        
-        // Enter key support for search
+        function playPlaylist(uri, name) {
+            if (!canMakeRequest('play')) {
+                showStatus('Please wait before playing', 'error');
+                return;
+            }
+            showStatus(`Attempting to play playlist: ${name}...`, 'info');
+            fetch('/spotify_play_context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uri: uri, name: name })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(data.message, 'success');
+                } else {
+                    showStatus('Playback failed: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Playback error: ' + error, 'error');
+            })
+            .finally(() => {
+                completeRequest();
+            });
+        }
+        function updateShuffleButtonVisuals(state, apiCallInProgress = false) {
+            const btn = document.getElementById('shuffleBtn');
+            if (!btn) return;
+            btn.dataset.state = state;
+            btn.classList.remove('active');
+            let newText = '⧓ Shuffle OFF';
+            if (state === 1) {
+                newText = '⧓ Shuffle ON';
+                btn.classList.add('active');
+            }
+            if (apiCallInProgress) {
+                btn.textContent = '↻ ' + newText;
+            } else {
+                btn.textContent = newText;
+            }
+        }
+        function toggleShuffle() {
+            const btn = document.getElementById('shuffleBtn');
+            if (!btn) return;
+            const currentState = parseInt(btn.dataset.state, 10);
+            const nextState = (currentState + 1) % 2; 
+            const newApiState = nextState === 1; 
+            updateShuffleButtonVisuals(nextState, true); 
+            showStatus(`Toggling shuffle to ${newApiState ? 'ON' : 'OFF'}...`, 'info');
+            fetch('/spotify_toggle_shuffle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: newApiState })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(data.message, 'success');
+                    updateShuffleButtonVisuals(data.new_state ? 1 : 0, false);
+                } else {
+                    showStatus('Shuffle failed: ' + data.error + '. Resetting button.', 'error');
+                    loadShuffleState(); 
+                }
+            })
+            .catch(error => {
+                showStatus('Shuffle error: ' + error, 'error');
+                loadShuffleState();
+            });
+        }
+        function loadShuffleState() {
+            fetch('/spotify_get_shuffle_state')
+            .then(response => response.json())
+            .then(data => {
+                const initialState = data.is_shuffling ? 1 : 0;
+                updateShuffleButtonVisuals(initialState, false);
+            })
+            .catch(error => {
+                console.error("Could not load shuffle state:", error);
+                updateShuffleButtonVisuals(0, false);
+            });
+        }
         document.getElementById('searchInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 performSearch();
             }
         });
-        
-        // Focus search input on load and load queue
+        document.getElementById('playlistInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performPlaylistSearch();
+            }
+        });
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('searchInput').focus();
             loadQueue();
-            
-            // Refresh queue every 10 seconds to keep it updated
+            loadShuffleState();
             setInterval(loadQueue, 10000);
         });
     </script>

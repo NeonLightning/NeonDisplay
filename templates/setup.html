@@ -3,341 +3,421 @@
 <head>
     <link rel="stylesheet" href="/static/colors.css">
     <title>NeonDisplay Launcher</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            max-width: 100%;
-            margin: 0;
-            padding: 20px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-        }
-        .container {
-            background: var(--bg-secondary);
-            padding: 30px;
-            border-radius: 0;
-            box-shadow: none;
-            border: 3px solid var(--border-color);
-            max-width: 100%;
-        }
-        h1 { 
-            text-align: center; 
-            color: var(--text-primary);
-            margin-bottom: 30px;
-        }
-        .form-group { 
-            margin-bottom: 20px; 
-        }
-        label { 
-            display: block; 
-            margin-bottom: 5px; 
-            font-weight: bold;
-            color: var(--text-primary);
-        }
-        input[type="text"], input[type="password"], textarea, select { 
-            width: 100%; 
-            padding: 10px; 
-            border: 1px solid var(--border-color); 
-            border-radius: 5px; 
-            box-sizing: border-box;
-            font-size: 16px;
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            transition: all 0.3s ease;
-        }
-        input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
-            border-color: var(--accent-color);
-            outline: none;
-        }
-        .section {
-            background: var(--bg-tertiary);
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            border-left: 4px solid var(--accent-color);
-            transition: all 0.3s ease;
-        }
-        .section h2 {
-            margin-top: 0;
-            color: var(--text-primary);
-        }
-        button { 
-            background: var(--accent-color); 
-            color: white; 
-            border: none; 
-            padding: 12px 20px; 
-            border-radius: 5px; 
-            cursor: pointer; 
-            font-size: 16px; 
-            width: 100%;
-            margin-top: 10px;
-            transition: all 0.3s ease;
-        }
-        button:hover { 
-            background: var(--accent-hover); 
-        }
-        .btn-secondary {
-            background: #6c757d;
-            margin-top: 5px;
-        }
-        .btn-success {
-            background: #28a745;
-            margin-top: 5px;
-        }
-        .btn-danger {
-            background: #dc3545;
-            margin-top: 5px;
-        }
-        .btn-warning {
-            background: #ffc107;
-            color: #212529;
-            margin-top: 5px;
-        }
-        .status {
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        .status.success { 
-            background: var(--success-bg); 
-            color: var(--text-primary); 
-            border: 1px solid var(--success-border);
-        }
-        .status.error { 
-            background: var(--error-bg); 
-            color: var(--text-primary); 
-            border: 1px solid var(--error-border);
-        }
-        .status.info { 
-            background: var(--info-bg); 
-            color: var(--text-primary); 
-            border: 1px solid var(--info-border);
-        }
-        .status.warning { 
-            background: var(--warning-bg); 
-            color: var(--text-primary); 
-            border: 1px solid var(--warning-border);
-        }
-        .app-controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin: 20px 0;
-        }
-        .control-panel {
-            background: var(--bg-secondary);
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            transition: all 0.3s ease;
-        }
-        .control-panel h3 {
-            margin-top: 0;
-            color: var(--text-primary);
-            border-bottom: 2px solid var(--accent-color);
-            padding-bottom: 10px;
-        }
-        .toggle-switch {
-            display: flex;
-            align-items: center;
-            margin: 10px 0;
-        }
-        .toggle-switch input[type="checkbox"] {
-            margin-right: 10px;
-            transform: scale(1.2);
-        }
-        .toggle-switch label {
-            color: var(--text-primary);
-        }
-        .app-status {
-            text-align: center;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 8px;
-            background: var(--bg-secondary);
-            border: 2px solid var(--border-color);
-            transition: all 0.3s ease;
-        }
-        .app-status.running {
-            background: var(--success-bg);
-            border-color: var(--success-border);
-            color: var(--text-primary);
-        }
-        .app-status.stopped {
-            background: var(--error-bg);
-            border-color: var(--error-border);
-            color: var(--text-primary);
-        }
-        .instructions {
-            background: var(--info-bg);
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            color: var(--text-primary);
-            border: 1px solid var(--info-border);
-        }
-        .instructions a {
-            color: var(--text-primary);
-            text-decoration: underline;
-        }
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--accent-color);
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            z-index: 1000;
-            width: auto;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            transition: all 0.3s ease;
-        }
-        .theme-toggle:hover {
-            background: var(--accent-hover);
-            transform: scale(1.05);
-        }
-        small {
-            color: var(--text-secondary);
-        }
-        .settings-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        .save-all-button {
-            background: #28a745;
-            font-size: 18px;
-            padding: 15px;
-            margin-top: 30px;
-        }
-        .progress-bar-pulse {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
-        }
-        .album-art-container {
-            flex-shrink: 0;
-            position: relative;
-        }
-        .album-art {
-            width: 150px;
-            height: 150px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            transition: opacity 0.5s ease;
-            object-fit: cover;
-        }
-        .album-art-placeholder {
-            width: 150px;
-            height: 150px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            background: var(--bg-tertiary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-secondary);
-            font-size: 48px;
-        }
-        .track-info {
-            flex: 1;
-            min-width: 0;
-        }
-        .track-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 4px;
-            color: var(--text-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .track-artist {
-            color: var(--text-secondary);
-            margin-bottom: 2px;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .track-album {
-            color: var(--text-secondary);
-            font-size: 12px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .track-title::before, .track-artist::before, .track-album::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 15px;
-            height: 100%;
-            background: linear-gradient(to right, var(--bg-tertiary), transparent);
-            z-index: 1;
-            pointer-events: none;
-        }
-        .track-title::after, .track-artist::after, .track-album::after {
-            content: '';
-            position: absolute;
-            right: 0;
-            top: 0;
-            width: 15px;
-            height: 100%;
-            background: linear-gradient(to left, var(--bg-tertiary), transparent);
-            z-index: 1;
-            pointer-events: none;
-        }
-        .track-title, .track-artist, .track-album {
-            position: relative;
-            overflow: hidden;
-            white-space: nowrap;
-            padding-left: 5px;
-        }
-        .track-title span, .track-artist span, .track-album span {
-            display: inline-block;
-            position: relative;
-        }
-        @keyframes scrollLoop {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-        }
-        .scroll-animated {
-            animation: scrollLoop 10s linear infinite;
-            display: inline-block;
-            white-space: nowrap;
-        }
-        .track-status {
-            font-size: 12px;
-            font-weight: bold;
-            min-width: 80px;
-            text-align: right;
-        }
-        .playing {
-            color: var(--accent-color);
-        }
-        .paused {
-            color: var(--text-secondary);
-        }
-        #progressBarContainer:hover {
-            background: var(--bg-tertiary);
-        }
-        #progressBarContainer:active {
-            transform: scale(0.98);
-        }
-    </style>
+<style>
+    body { 
+        font-family: Arial, sans-serif; 
+        max-width: 100%;
+        margin: 0;
+        padding: 20px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        transition: all 0.3s ease;
+    }
+    .container {
+        background: var(--bg-secondary);
+        padding: 30px;
+        border-radius: 0;
+        box-shadow: none;
+        border: 3px solid var(--border-color);
+        max-width: 100%;
+    }
+    h1 { 
+        text-align: center; 
+        color: var(--text-primary);
+        margin-bottom: 30px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    .form-group { 
+        margin-bottom: 20px; 
+    }
+    label { 
+        display: block; 
+        margin-bottom: 5px; 
+        font-weight: bold;
+        color: var(--text-primary);
+    }
+    input[type="text"], input[type="password"], textarea, select { 
+        width: 100%; 
+        padding: 10px; 
+        border: 2px solid var(--border-color); 
+        border-radius: 5px; 
+        box-sizing: border-box;
+        font-size: 16px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        transition: all 0.3s ease;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+        border-color: var(--accent-color);
+        outline: none;
+        box-shadow: 0 0 8px var(--accent-color);
+    }
+    .section {
+        background: var(--bg-tertiary);
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        border: 2px solid var(--border-color);
+        transition: all 0.3s ease;
+    }
+    .section h2 {
+        margin-top: 0;
+        color: var(--text-primary);
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    button { 
+        background: var(--accent-color); 
+        color: var(--text-on-dark); 
+        border: 2px solid var(--border-color); 
+        padding: 12px 20px; 
+        border-radius: 5px; 
+        cursor: pointer; 
+        font-size: 16px;
+        font-weight: bold;
+        width: 100%;
+        margin-top: 10px;
+        transition: all 0.3s ease;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+    button:hover { 
+        background: var(--accent-hover); 
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    button:active {
+        transform: translateY(0);
+    }
+    .btn-secondary {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 2px solid var(--border-color);
+        margin-top: 5px;
+    }
+    .btn-secondary:hover {
+        background: var(--bg-secondary);
+    }
+    .btn-success {
+        background: var(--success-color);
+        color: var(--text-on-dark);
+        border: 2px solid var(--border-color);
+        margin-top: 5px;
+    }
+    .btn-success:hover {
+        background: var(--bg-tertiary);
+    }
+    .btn-danger {
+        background: var(--error-bg);
+        color: var(--text-on-dark);
+        border: 2px solid var(--error-border);
+        margin-top: 5px;
+    }
+    .btn-danger:hover {
+        background: var(--bg-tertiary);
+    }
+    .btn-warning {
+        background: var(--warning-color);
+        color: var(--text-on-dark);
+        border: 2px solid var(--border-color);
+        margin-top: 5px;
+    }
+    .btn-warning:hover {
+        background: var(--bg-tertiary);
+    }
+    .status {
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+        text-align: center;
+        transition: all 0.3s ease;
+        border: 2px solid;
+        font-weight: bold;
+    }
+    .status.success { 
+        background: var(--success-bg); 
+        color: var(--text-primary); 
+        border-color: var(--success-border);
+    }
+    .status.error { 
+        background: var(--error-bg); 
+        color: var(--text-on-dark); 
+        border-color: var(--error-border);
+    }
+    .status.info { 
+        background: var(--info-bg); 
+        color: var(--text-on-dark); 
+        border-color: var(--info-border);
+    }
+    .status.warning { 
+        background: var(--warning-bg); 
+        color: var(--text-on-dark); 
+        border-color: var(--warning-border);
+    }
+    .app-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin: 20px 0;
+    }
+    .control-panel {
+        background: var(--bg-secondary);
+        padding: 20px;
+        border-radius: 8px;
+        border: 2px solid var(--border-color);
+        transition: all 0.3s ease;
+    }
+    .control-panel:hover {
+        border-color: var(--accent-color);
+    }
+    .control-panel h3 {
+        margin-top: 0;
+        color: var(--text-primary);
+        border-bottom: 3px solid var(--accent-color);
+        padding-bottom: 10px;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    .toggle-switch {
+        display: flex;
+        align-items: center;
+        margin: 10px 0;
+    }
+    .toggle-switch input[type="checkbox"] {
+        margin-right: 10px;
+        transform: scale(1.5);
+        cursor: pointer;
+    }
+    .toggle-switch label {
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+    .app-status {
+        text-align: center;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        border: 3px solid var(--border-color);
+        transition: all 0.3s ease;
+        font-weight: bold;
+        font-size: 16px;
+    }
+    .app-status.running {
+        background: var(--success-bg);
+        border-color: var(--success-border);
+        color: var(--text-primary);
+        animation: pulse 2s infinite;
+    }
+    .app-status.stopped {
+        background: var(--error-bg);
+        border-color: var(--error-border);
+        color: var(--text-on-dark);
+    }
+    .instructions {
+        background: var(--info-bg);
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        font-size: 14px;
+        color: var(--text-on-dark);
+        border: 2px solid var(--info-border);
+    }
+    .instructions a {
+        color: var(--text-primary);
+        text-decoration: underline;
+        font-weight: bold;
+    }
+    .theme-toggle {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--accent-color);
+        color: var(--text-on-dark);
+        border: 2px solid var(--border-color);
+        padding: 8px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 1000;
+        width: auto;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+        transition: all 0.3s ease;
+    }
+    .theme-toggle:hover {
+        background: var(--accent-hover);
+        transform: scale(1.1);
+    }
+    small {
+        color: var(--text-secondary);
+    }
+    .settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .save-all-button {
+        background: var(--success-color);
+        color: var(--text-on-dark);
+        font-size: 18px;
+        padding: 15px;
+        margin-top: 30px;
+        border: 3px solid var(--border-color);
+    }
+    .save-all-button:hover {
+        background: var(--bg-tertiary);
+    }
+    .progress-bar-pulse {
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+    .album-art-container {
+        flex-shrink: 0;
+        position: relative;
+    }
+    .album-art {
+        width: 150px;
+        height: 150px;
+        border-radius: 8px;
+        border: 3px solid var(--border-color);
+        transition: opacity 0.5s ease;
+        object-fit: cover;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    }
+    .album-art-placeholder {
+        width: 150px;
+        height: 150px;
+        border-radius: 8px;
+        border: 3px solid var(--border-color);
+        background: var(--bg-tertiary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-primary);
+        font-size: 48px;
+    }
+    .track-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .track-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 4px;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+    .track-artist {
+        color: var(--text-secondary);
+        margin-bottom: 2px;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .track-album {
+        color: var(--text-secondary);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .track-title::before, .track-artist::before, .track-album::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 15px;
+        height: 100%;
+        background: linear-gradient(to right, var(--bg-tertiary), transparent);
+        z-index: 1;
+        pointer-events: none;
+    }
+    .track-title::after, .track-artist::after, .track-album::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 15px;
+        height: 100%;
+        background: linear-gradient(to left, var(--bg-tertiary), transparent);
+        z-index: 1;
+        pointer-events: none;
+    }
+    .track-title, .track-artist, .track-album {
+        position: relative;
+        overflow: hidden;
+        white-space: nowrap;
+        padding-left: 5px;
+    }
+    .track-title span, .track-artist span, .track-album span {
+        display: inline-block;
+        position: relative;
+    }
+    @keyframes scrollLoop {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+    .scroll-animated {
+        animation: scrollLoop 10s linear infinite;
+        display: inline-block;
+        white-space: nowrap;
+    }
+    .track-status {
+        font-size: 12px;
+        font-weight: bold;
+        min-width: 80px;
+        text-align: right;
+    }
+    .playing {
+        color: var(--success-color);
+        text-shadow: 0 0 8px var(--success-color);
+    }
+    .paused {
+        color: var(--text-secondary);
+    }
+    #progressBarContainer {
+        transition: all 0.2s ease;
+    }
+    #progressBarContainer:hover {
+        background: var(--bg-secondary);
+        transform: scaleY(1.2);
+    }
+    #progressBarContainer:active {
+        transform: scale(0.98);
+    }
+    #progressBar {
+        box-shadow: 0 0 8px var(--accent-color);
+    }
+    .volume-control input[type="range"] {
+        accent-color: var(--accent-color);
+    }
+    .volume-control input[type="range"]::-webkit-slider-thumb {
+        background: var(--accent-color);
+        border: 2px solid var(--border-color);
+    }
+    .volume-control input[type="range"]::-moz-range-thumb {
+        background: var(--accent-color);
+        border: 2px solid var(--border-color);
+    }
+    #lyricsContent {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        border: 2px solid var(--border-color);
+    }
+    a {
+        color: var(--text-primary);
+        text-decoration: none;
+    }
+    a:hover {
+        color: var(--accent-color);
+    }
+</style>
 </head>
 <body data-theme="{{ ui_config.theme }}">
     <button class="theme-toggle" onclick="toggleTheme()">
@@ -357,7 +437,7 @@
             {% endif %}
         {% endwith %}
         {% if config.settings.enable_current_track_display and spotify_authenticated  %}
-        <h2>🎵 Currently Playing</h2>
+        <h2>♪ Currently Playing</h2>
         <div id="currentTrackContainer" class="section">
             <div style="display: flex; gap: 20px; align-items: flex-start;">
                 <div class="album-art-container">
@@ -386,7 +466,7 @@
                         </div>
                         <div style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative;">
                             <div id="progressBarContainer" style="width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden; position: relative; cursor: pointer;" onclick="seekToPosition(event)">
-                                <div id="progressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), #4dabf7); border-radius: 4px; position: relative;">
+                                <div id="progressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-color), var(--text-primary)); border-radius: 4px; position: relative;">
                                     <div style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>
                                 </div>
                             </div>
@@ -396,19 +476,19 @@
             </div>
         </div>
         <div class="section">
-            <h2>🎵 Spotify Controls</h2>
+            <h2>♪ Spotify Controls</h2>
             <div class="spotify-controls" style="display: flex; justify-content: center; gap: 10px; margin: 15px 0;">
                 <button type="button" class="btn-secondary" onclick="spotifyControl('previous')" title="Previous Track">
-                    ⏮️ Previous
+                    ⏮ Previous
                 </button>
                 <button type="button" class="btn-success" onclick="spotifyControl('play')" title="Play" id="playBtn">
-                    ▶️ Play
+                    ▶ Play
                 </button>
                 <button type="button" class="btn-warning" onclick="spotifyControl('pause')" title="Pause" id="pauseBtn">
-                    ⏸️ Pause
+                    ⏸ Pause
                 </button>
                 <button type="button" class="btn-secondary" onclick="spotifyControl('next')" title="Next Track">
-                    ⏭️ Next
+                    ⏭ Next
                 </button>
             </div>
             <button type="button" class="btn-secondary" onclick="toggleLyricsDropdown()" title="Show Lyrics">📝 Lyrics</button>
@@ -426,7 +506,7 @@
             <div class="section">
                 <a href="/search_results">
                     <button type="button" class="btn-secondary" style="width: 100%;">
-                        🔍 Search Spotify
+                        ⌕ Search Spotify
                     </button>
                 </a>
             </div>
@@ -435,30 +515,30 @@
             <div class="control-panel">
                 <h3>NeonDisplay Display</h3>
                 <div class="app-status {% if hud_running %}running{% else %}stopped{% endif %}">
-                    Status: {% if hud_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
+                    Status: {% if hud_running %}✓ RUNNING{% else %}✕ STOPPED{% endif %}
                 </div>
                 {% if hud_running %}
                 <form method="POST" action="/stop_hud">
-                    <button type="submit" class="btn-danger">🛑 Stop hud</button>
+                    <button type="submit" class="btn-danger">■ Stop hud</button>
                 </form>
                 {% else %}
                 <form method="POST" action="/start_hud">
-                    <button type="submit" class="btn-success">🚀 Start hud</button>
+                    <button type="submit" class="btn-success">▶ Start hud</button>
                 </form>
                 {% endif %}
             </div>
             <div class="control-panel">
                 <h3>WiFi Manager</h3>
                 <div class="app-status {% if neonwifi_running %}running{% else %}stopped{% endif %}">
-                    Status: {% if neonwifi_running %}✅ RUNNING{% else %}❌ STOPPED{% endif %}
+                    Status: {% if neonwifi_running %}✓ RUNNING{% else %}✕ STOPPED{% endif %}
                 </div>
                 {% if neonwifi_running %}
                 <form method="POST" action="/stop_neonwifi">
-                    <button type="submit" class="btn-danger">🛑 Stop WiFi Manager</button>
+                    <button type="submit" class="btn-danger">■ Stop WiFi Manager</button>
                 </form>
                 {% else %}
                 <form method="POST" action="/start_neonwifi">
-                    <button type="submit" class="btn-success">🚀 Start WiFi Manager</button>
+                    <button type="submit" class="btn-success">▶ Start WiFi Manager</button>
                 </form>
                 {% endif %}
             </div>
@@ -466,10 +546,10 @@
         {% endif %}
         <div class="section">
             <a href="/music_stats">
-                <button type="button" class="btn-secondary">📊 Music Statistics</button>
+                <button type="button" class="btn-secondary">▥ Music Statistics</button>
             </a>
             <a href="/advanced_config">
-                <button type="button" class="btn-secondary">⚙️ Advanced Configuration</button>
+                <button type="button" class="btn-secondary">⚙ Advanced Configuration</button>
             </a>
         </div>
         <form method="POST" action="/save_all_config">
@@ -488,11 +568,11 @@
                     <label for="check_internet">Wait for internet connection before starting hud</label>
                 </div>
             </div>
-            <button type="submit" class="save-all-button">💾 Save Auto-start Settings</button>
+            <button type="submit" class="save-all-button">▣ Save Auto-start Settings</button>
         </form>
         <div class="section">
             <form action="/view_logs" method="GET" style="display: flex; gap: 10px; align-items: center;">
-                <button type="submit" class="btn-secondary">📋 View Logs</button>
+                <button type="submit" class="btn-secondary">▤ View Logs</button>
                 <label for="log_lines" style="color: var(--text-primary);">Lines:</label>
                 <input type="number" id="log_lines" name="lines" value="100" min="10" max="1000" style="width: 80px;">
             </form>
@@ -532,7 +612,7 @@
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
         document.body.setAttribute('data-theme', newTheme);
         const button = document.querySelector('.theme-toggle');
-        button.innerHTML = newTheme === 'dark' ? '☀️' : '🌙';
+        button.innerHTML = newTheme === 'dark' ? '☀' : '☾';
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/toggle_theme';
@@ -1098,10 +1178,10 @@
                 const hudStatus = document.querySelector('.control-panel:nth-child(1) .app-status');
                 if (hudStatus) {
                     if (data.running) {
-                        hudStatus.textContent = 'Status: ✅ RUNNING';
+                        hudStatus.textContent = 'Status: ✓ RUNNING';
                         hudStatus.className = 'app-status running';
                     } else {
-                        hudStatus.textContent = 'Status: ❌ STOPPED';
+                        hudStatus.textContent = 'Status: ✕ STOPPED';
                         hudStatus.className = 'app-status stopped';
                     }
                 }
@@ -1113,10 +1193,10 @@
                 const neonwifiStatus = document.querySelector('.control-panel:nth-child(2) .app-status');
                 if (neonwifiStatus) {
                     if (data.running) {
-                        neonwifiStatus.textContent = 'Status: ✅ RUNNING';
+                        neonwifiStatus.textContent = 'Status: ✓ RUNNING';
                         neonwifiStatus.className = 'app-status running';
                     } else {
-                        neonwifiStatus.textContent = 'Status: ❌ STOPPED';
+                        neonwifiStatus.textContent = 'Status: ✕ STOPPED';
                         neonwifiStatus.className = 'app-status stopped';
                     }
                 }
@@ -1129,7 +1209,7 @@
         document.body.setAttribute('data-theme', savedTheme);
         const themeButton = document.querySelector('.theme-toggle');
         if (themeButton) {
-            themeButton.innerHTML = savedTheme === 'dark' ? '☀️' : '🌙';
+            themeButton.innerHTML = savedTheme === 'dark' ? '☀' : '☾';
         }
         {% if config.settings.enable_current_track_display and spotify_authenticated %}
         setupCurrentTrackSSE();

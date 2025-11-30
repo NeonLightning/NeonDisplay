@@ -24,7 +24,7 @@
             padding: 20px;
             background: var(--bg-secondary);
             border-radius: 8px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
         }
         .controls {
             display: flex;
@@ -43,7 +43,7 @@
             padding: 20px;
             border-radius: 8px;
             text-align: center;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
         }
         .stat-number {
             font-size: 2em;
@@ -64,9 +64,7 @@
             background: var(--bg-secondary);
             padding: 20px;
             border-radius: 8px;
-            border: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
+            border: 2px solid var(--border-color);
         }
         .chart-title {
             margin-top: 0;
@@ -234,21 +232,28 @@
             color: white;
             border: 1px solid #f5c6cb;
         }
+        .status.info, .status.success, .status.error {
+            border: 2px solid;
+            font-weight: bold;
+        }
         input, button, select {
             padding: 8px 12px;
-            border: 1px solid var(--border-color);
+            border: 2px solid var(--border-color);
             border-radius: 4px;
             background: var(--bg-tertiary);
             color: var(--text-primary);
+            transition: all 0.3s ease;
         }
         button {
             background: var(--accent-color);
-            border: none;
+            border: 2px solid var(--border-color);
             cursor: pointer;
-            color: white;
+            color: var(--text-on-dark);
+            font-weight: bold;
         }
         button:hover {
             background: var(--accent-hover);
+            transform: translateY(-2px);
         }
         .theme-toggle {
             background: var(--accent-color);
@@ -302,16 +307,16 @@
     <div id="statusContainer"></div>
     <div class="container">
         <div class="header">
-            <h1>🎵 Music Statistics</h1>
+            <h1>♪ Music Statistics</h1>
             <div class="controls">
                 <form method="GET" style="display: flex; gap: 10px; align-items: center;">
                     <label>Max Items:</label>
                     <input type="number" name="lines" value="{{ lines }}" min="10" max="1000" style="width: 80px;">
                 </form>
-                <button onclick="location.href='/'">← Back to Launcher</button>
-                <button onclick="clearSongLogs()">🗑️ Clear Song Logs</button>
+                <button onclick="location.href='/'">← Back to Main</button>
+                <button onclick="clearSongLogs()">■ Clear Song Logs</button>
                 <button class="theme-toggle" onclick="toggleTheme()">
-                    {{ '☀️' if ui_config.theme == 'dark' else '🌙' }}
+                    {{ '☀' if ui_config.theme == 'dark' else '☾' }}
                 </button>
             </div>
         </div>
@@ -331,7 +336,7 @@
         </div>
         <div class="charts-container">
             <div class="chart-card">
-                <h2 class="chart-title">🎼 Most Played Songs</h2>
+                <h2 class="chart-title">♫ Most Played Songs</h2>
                 <div class="chart-container">
                     <div class="bar-chart" id="songChart">
                         {% for label, count, color in song_chart_items %}
@@ -347,7 +352,7 @@
                                 <div class="bar-count">{{ count }}</div>
                             </div>
                             <div class="song-actions">
-                                <button class="action-button queue-button" onclick="searchAndQueue('{{ label }}')">➕ Queue</button>
+                                <button class="action-button queue-button" onclick="searchAndQueue('{{ label }}')">+ Queue</button>
                                 <button class="action-button play-button" onclick="searchAndPlay('{{ label }}')">▶ Play</button>
                             </div>
                         </div>
@@ -356,7 +361,7 @@
                 </div>
             </div>
             <div class="chart-card">
-                <h2 class="chart-title">🎤 Most Played Artists</h2>
+                <h2 class="chart-title">♪ Most Played Artists</h2>
                 <div class="chart-container">
                     <div class="bar-chart" id="artistChart">
                         {% for label, count, color in artist_chart_items %}
@@ -575,7 +580,7 @@
                         <div class="bar-count">${count}</div>
                     </div>
                     <div class="song-actions">
-                        <button class="action-button queue-button" onclick="searchAndQueue('${label.replace(/'/g, "\\'")}')">➕ Queue</button>
+                        <button class="action-button queue-button" onclick="searchAndQueue('${label.replace(/'/g, "\\'")}')">+ Queue</button>
                         <button class="action-button play-button" onclick="searchAndPlay('${label.replace(/'/g, "\\'")}')">▶ Play</button>
                     </div>
                 `;
