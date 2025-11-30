@@ -66,11 +66,11 @@
             margin: 2px 0;
             line-height: 1.4;
         }
-        .log-error { color: #ff6b6b; }
-        .log-warning { color: #ffd93d; }
-        .log-info { color: #6bcbef; }
-        .log-success { color: #6bcf7f; }
-        .log-debug { color: #a0a0a0; }
+        .log-error { color: var(--error-border); }
+        .log-warning { color: var(--warning-border); }
+        .log-info { color: var(--info-border); }
+        .log-success { color: var(--success-border); }
+        .log-debug { color: var(--text-secondary); }
         .theme-toggle {
             background: var(--accent-color);
             color: var(--text-on-dark);
@@ -86,6 +86,7 @@
             background: var(--accent-hover);
         }
     </style>
+    </style>
 </head>
 <body data-theme="{{ current_theme }}">
     <div class="container">
@@ -100,7 +101,7 @@
                 <button onclick="toggleLive()" id="liveBtn">▶️ Start Live</button>
                 <button onclick="location.href='/'">← Back to Main</button>
                 <button onclick="clearLogs()">■ Clear Logs</button>
-                <button onclick="clearBackups()">■ Clear Backups</button>
+                <button onclick="clearBackups()" id="clearBackupsBtn">■ Clear Backups: <span id="backupCount">{{ backup_count }}</span> files</button>
                 <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">
                     {{ '☀' if current_theme == 'dark' else '☾' }}
                 </button>
@@ -173,8 +174,7 @@
                     body: 'clear_option=current'
                 })
                 .then(() => {
-                    document.getElementById('logContent').innerText = 'Current log cleared...';
-                    colorCodeLogs();
+                    location.reload();
                 });
             }
         }
@@ -190,6 +190,7 @@
                 .then(response => response.text())
                 .then(message => {
                     alert(message);
+                    location.reload();
                 })
                 .catch(error => {
                     alert('Error clearing backups: ' + error);

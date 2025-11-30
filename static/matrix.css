@@ -1,25 +1,12 @@
-/* Matrix theme */
 :root {
-    /* Primary Black Background */
     --bg-primary: #000000;
-    /* Secondary Darker Green Backgrounds for Sections/Cards */
     --bg-secondary: #003B00; 
-    /* Tertiary Darkest Green Background for Sub-sections */
     --bg-tertiary: #001A00; 
-
-    /* Primary Bright Green Text */
     --text-primary: #00FF41; 
-    /* Secondary Lighter Green Text (for small print/hints) */
     --text-secondary: #009A22; 
-
-    /* Accent Color: Very Bright Green for Buttons/Highlights */
     --accent-color: #00FF41; 
-    /* Slightly Darker Green on Hover */
     --accent-hover: #00CC33; 
-    /* Border Color: Bright Green */
     --border-color: #009A22; 
-
-    /* Status Colors (Matrix Style) */
     --success-bg: #001A00;
     --success-border: #00FF41;
     --error-bg: #4D0000;
@@ -28,19 +15,15 @@
     --warning-border: #FFFF00;
     --info-bg: #001A00;
     --info-border: #009A22;
-    
     --card-bg: #003B00;
     --log-bg: #000000;
-    --success-color: #00721c; /* Text color for success status */
-    --warning-color: #FFFF00; /* Text color for warning status */
-    
-    /* Text colors that should work well on dark backgrounds */
+    --success-color: #00721c;
+    --warning-color: #FFFF00;
     --text-on-dark: #FFFFFF; 
     --text-on-light: #000000; 
     --text-secondary-on-dark: #009A22;
 }
 
-/* Light theme for 'matrix_theme.css' (optional, but good practice) */
 [data-theme="light"] {
     --bg-primary: #00FF41;
     --bg-secondary: #FFFFFF;

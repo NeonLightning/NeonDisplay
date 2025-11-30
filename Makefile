@@ -479,7 +479,7 @@ logs:
 
 tail:
 	@echo "$(GREEN)Viewing program logs:$(NC)"
-	tail -f /opt/neondisplay/neondisplay.log
+	tail -f /opt/neondisplay/backuplogs/neondisplay.log
 
 update-packages:
 	@echo "$(GREEN)Updating Python packages with uv...$(NC)"

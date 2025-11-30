@@ -126,16 +126,14 @@ def save_config(config):
         toml.dump(config, f)
 
 def setup_logging():
-    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger().handlers = []
     logger = logging.getLogger('Launcher')
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
+    logger.handlers = []
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    console_handler = logging.StreamHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
@@ -145,21 +143,30 @@ def setup_logging():
         max_lines = log_config.get("max_log_lines", 10000)
         max_bytes = max_lines * 100  
         backup_count = log_config.get("max_backup_files", 5)
+        backup_folder = "backuplogs"
+        os.makedirs(backup_folder, exist_ok=True)
         file_handler = RotatingFileHandler(
-            'neondisplay.log', 
+            os.path.join(backup_folder, 'neondisplay.log'),
             maxBytes=max_bytes, 
             backupCount=backup_count
         )
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-        if not os.path.exists('neondisplay.log') or os.path.getsize('neondisplay.log') == 0:
-            with open('neondisplay.log', 'a') as f:
+        log_file_path = os.path.join(backup_folder, 'neondisplay.log')
+        if not os.path.exists(log_file_path) or os.path.getsize(log_file_path) == 0:
+            with open(log_file_path, 'a') as f:
                 f.write(f"Log file initialized at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                
+        logger.info("✅ Logging system initialized - console and file handlers active")
     except Exception as e:
         print(f"Failed to setup file logging: {e}")
-        
+        logger.error(f"File logging setup failed: {e}")
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.WARNING)
+    if not werkzeug_logger.handlers:
+        console_handler_werkzeug = logging.StreamHandler(sys.stdout)
+        console_handler_werkzeug.setLevel(logging.WARNING)
+        werkzeug_logger.addHandler(console_handler_werkzeug)
     return logger
 
 def check_internet_connection(timeout=5):
@@ -734,7 +741,10 @@ def view_logs():
     config = load_config()
     ui_config = config.get("ui", {"theme": "dark"})
     current_theme = ui_config.get("theme", "dark")
-    log_file = 'neondisplay.log'
+
+    backup_folder = "backuplogs"
+    log_file = os.path.join(backup_folder, 'neondisplay.log')
+    backup_count = count_backup_logs()
     
     if not os.path.exists(log_file):
         log_content = "Log file does not exist. It will be created when there are log messages.\n\n"
@@ -745,9 +755,9 @@ def view_logs():
             log_content=log_content,
             lines=lines,
             current_theme=current_theme,
-            ui_config=ui_config  # Add this line
+            ui_config=ui_config,
+            backup_count=backup_count
         )
-    
     try:
         with open(log_file, 'r') as f:
             all_lines = f.readlines()
@@ -758,16 +768,44 @@ def view_logs():
     except Exception as e:
         log_content = f"Error reading log file: {str(e)}\n\n"
         log_content += f"Log file path: {os.path.abspath(log_file)}"
-    
     if live:
         return log_content
-    
     return render_template('logs.html',
         log_content=log_content,
         lines=lines,
         current_theme=current_theme,
-        ui_config=ui_config  # Add this line
+        ui_config=ui_config,
+        backup_count=backup_count
     )
+
+def ensure_log_file():
+    backup_folder = "backuplogs"
+    log_file = os.path.join(backup_folder, 'neondisplay.log')
+    try:
+        os.makedirs(backup_folder, exist_ok=True)
+        if not os.path.exists(log_file):
+            with open(log_file, 'w') as f:
+                f.write(f"Log file created at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            return True
+        with open(log_file, 'a') as f:
+            f.write(f"Log check at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        return True
+    except Exception as e:
+        print(f"Log file error: {e}")
+        return False
+
+def count_backup_logs():
+    backup_folder = "backuplogs"
+    count = 0
+    try:
+        if os.path.exists(backup_folder):
+            for filename in os.listdir(backup_folder):
+                if filename.startswith("neondisplay.log."):
+                    count += 1
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error counting backup logs: {e}")
+    return count
 
 @app.route('/clear_logs', methods=['POST'])
 def clear_logs():
@@ -1331,11 +1369,7 @@ def clear_song_logs():
 def advanced_config():
     config = load_config()
     ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
-
-    # 1. Get the dynamic list of CSS files
     available_css = get_available_css_files()
-    
-    # Ensure the current selection is valid
     if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
         ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
         
@@ -1343,25 +1377,19 @@ def advanced_config():
         'advanced_config.html',
         config=config,
         ui_config=ui_config,
-        available_css=available_css # Pass the dynamic list
+        available_css=available_css
     )
 
 @app.route('/save_advanced_config', methods=['POST'])
 def save_advanced_config():
     config = load_config()
-
     if "ui" not in config:
         config["ui"] = {}
-    
-    # 2. Get the dynamic list and the selection from the form
     available_css = get_available_css_files()
     selected_css = request.form.get('css_file')
-    
-    # Save the selected file only if it is in the dynamic list of available files
     if selected_css and selected_css in available_css:
         config["ui"]["css_file"] = selected_css
     else:
-        # Fallback if invalid data is somehow submitted
         config["ui"]["css_file"] = DEFAULT_CONFIG["ui"]["css_file"]
     try:
         config["api_keys"]["openweather"] = request.form.get('openweather', '').strip()
@@ -1493,20 +1521,6 @@ def get_last_logged_song():
         logger = logging.getLogger('Launcher')
         logger.error(f"Error reading last logged song: {e}")
         return None
-
-def ensure_log_file():
-    log_file = 'neondisplay.log'
-    try:
-        if not os.path.exists(log_file):
-            with open(log_file, 'w') as f:
-                f.write(f"Log file created at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            return True
-        with open(log_file, 'a') as f:
-            f.write(f"Log check at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        return True
-    except Exception as e:
-        print(f"Log file error: {e}")
-        return False
 
 def log_current_track_state():
     global last_logged_song
