@@ -748,6 +748,40 @@ def process_callback_url():
             os.remove(".spotify_cache")
     return redirect(url_for('index'))
 
+@app.route('/api/current_weather')
+def api_current_weather():
+    try:
+        weather_file = '.weather_state.toml'
+        if os.path.exists(weather_file):
+            state_data = toml.load(weather_file)
+            weather_data = state_data.get('weather', {})
+            timestamp = weather_data.get('timestamp', 0)
+            if time.time() - timestamp < 7200:
+                return {
+                    'success': True,
+                    'weather': weather_data,
+                    'timestamp': datetime.now().isoformat()
+                }
+        return {
+            'success': True,
+            'weather': {
+                'city': 'Weather data loading...',
+                'temp': 0,
+                'description': 'Please wait',
+                'icon_id': '',
+                'timestamp': time.time()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting weather data: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
+
 @app.route('/view_logs')
 def view_logs():
     lines = request.args.get('lines', 100, type=int)

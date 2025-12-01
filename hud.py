@@ -346,6 +346,70 @@ def get_cached_weather(lat, lon):
 def cache_weather(lat, lon, data):
     weather_cache[f"{lat:.2f}_{lon:.2f}"] = (data, time.time())
 
+def write_weather_state(weather_data):
+    with file_write_lock:
+        try:
+            state_data = {}
+            if weather_data:
+                state_data['weather'] = {
+                    'city': weather_data.get('city', 'Unknown'),
+                    'country': weather_data.get('country', ''),
+                    'temp': weather_data.get('temp', 0),
+                    'feels_like': weather_data.get('feels_like', 0),
+                    'description': weather_data.get('description', 'Unknown'),
+                    'icon_id': weather_data.get('icon_id', ''),
+                    'main': weather_data.get('main', ''),
+                    'humidity': weather_data.get('humidity', 0),
+                    'pressure': weather_data.get('pressure', 0),
+                    'wind_speed': weather_data.get('wind_speed', 0),
+                    'timestamp': time.time()
+                }
+            else:
+                state_data['weather'] = {
+                    'city': 'No weather data',
+                    'country': '',
+                    'temp': 0,
+                    'feels_like': 0,
+                    'description': 'Failed to fetch',
+                    'icon_id': '',
+                    'main': '',
+                    'humidity': 0,
+                    'pressure': 0,
+                    'wind_speed': 0,
+                    'timestamp': time.time()
+                }
+            temp_path = '.weather_state.toml.tmp'
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                toml.dump(state_data, f)
+            if os.path.exists(temp_path):
+                try:
+                    with open(temp_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        if content:
+                            toml.loads(content)
+                            os.replace(temp_path, '.weather_state.toml')
+                            return
+                except Exception as e:
+                    print(f"Weather TOML validation failed: {e}")
+                    try:
+                        os.remove(temp_path)
+                    except:
+                        pass
+            fallback_data = {
+                'weather': {
+                    'city': 'Error',
+                    'country': '',
+                    'temp': 0,
+                    'feels_like': 0,
+                    'description': 'Error writing state',
+                    'timestamp': time.time()
+                }
+            }
+            with open('.weather_state.toml', 'w', encoding='utf-8') as f:
+                toml.dump(fallback_data, f)
+        except Exception as e:
+            print(f"Error writing weather state: {e}")
+
 def get_weather_data_by_coords(api_key, lat, lon, units):
     if not update_internet_status():
         print("⚠️ Skipping weather update - no internet")
@@ -1126,6 +1190,7 @@ def weather_loop():
             new_weather = get_weather_data_by_coords(OPENWEATHER_API_KEY, lat, lon, "metric")
             if new_weather is not None: 
                 weather_info = new_weather
+                write_weather_state(weather_info)
                 if weather_info and "icon_id" in weather_info:
                     try:
                         icon_url = f"http://openweathermap.org/img/wn/{weather_info['icon_id']}.png"
