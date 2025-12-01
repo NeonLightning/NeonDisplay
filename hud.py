@@ -227,9 +227,7 @@ CLOCK_BACKGROUND = config["clock"]["background"]
 CLOCK_COLOR = config["clock"].get("color", "black")
 MIN_DISPLAY_INTERVAL = 0.001
 DEBOUNCE_TIME = 0.3
-UPDATE_INTERVAL_WEATHER = 3600
 WAKEUP_CHECK_INTERVAL = 10
-GEO_UPDATE_INTERVAL = 900
 
 def get_cached_bg(bg_path, size):
     key = (bg_path, size)
@@ -986,7 +984,11 @@ def write_current_track_state(track_data):
                     'current_position': int(track_data.get('current_position', 0)),
                     'duration': int(track_data.get('duration', 0)),
                     'is_playing': bool(track_data.get('is_playing', False)),
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'shuffle_state': bool(track_data.get('shuffle_state', False)),
+                    'volume_percent': int(track_data.get('volume_percent', 50)),
+                    'device_name': track_data.get('device_name', ''),
+                    'device_active': bool(track_data.get('device_active', False))
                 }
             else:
                 state_data['current_track'] = {
@@ -996,7 +998,11 @@ def write_current_track_state(track_data):
                     'current_position': 0,
                     'duration': 0,
                     'is_playing': False,
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'shuffle_state': bool(track_data.get('shuffle_state', False)),
+                    'volume_percent': int(track_data.get('volume_percent', 50)),
+                    'device_name': track_data.get('device_name', ''),
+                    'device_active': bool(track_data.get('device_active', False))
                 }
             for key, value in state_data['current_track'].items():
                 if value is None:
@@ -1547,13 +1553,23 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
     current_position = track.get('progress_ms', 0) // 1000
     duration = item.get('duration_ms', 0) // 1000
     is_playing = track.get('is_playing', False)
+    shuffle_state = track.get('shuffle_state', False)
+    device = track.get('device', {})
+    volume_percent = device.get('volume_percent', 50) if device else 50
+    device_name = device.get('name', '') if device else ''
+    device_active = device is not None
     new_track = {
         "title": item.get('name', "Unknown Track"),
         "artists": artist_str,
         "album": album_str,
         "current_position": current_position,
         "duration": duration,
-        "is_playing": is_playing
+        "is_playing": is_playing,
+        # NEW: Add these fields
+        "shuffle_state": shuffle_state,
+        "volume_percent": volume_percent,
+        "device_name": device_name,
+        "device_active": device_active
     }
     current_track_id = f"{new_track['title']}_{new_track['artists']}"
     is_continuation = (is_first_track_after_startup and previous_track_id and current_track_id == previous_track_id)
@@ -1640,11 +1656,11 @@ def spotify_loop():
                 current_check_interval = base_track_check_interval
         time_since_last_api = current_time - last_api_call
         if time_since_last_api < current_check_interval:
-            time.sleep(0.1)
+            time.sleep(0.5)
             continue
         try:
             last_api_call = current_time
-            track = sp.current_user_playing_track()
+            track = sp.current_playback()
             api_error_count = 0
             if not track or not track.get('item'):
                 last_successful_write = handle_no_track_playing(current_time, last_successful_write, write_interval)
@@ -1785,7 +1801,6 @@ def clear_framebuffer():
                     os.fsync(f.fileno())
             except Exception as e:
                 print(f"Direct framebuffer write failed: {e}")
-            print(f"✅ Framebuffer cleared: {FRAMEBUFFER}")
         except Exception as e:
             print(f"❌ Error clearing framebuffer: {e}")
             if HAS_ST7789:
@@ -1836,7 +1851,6 @@ def go_to_sleep():
     global display_sleeping, last_display_time
     if not display_sleeping:
         display_sleeping = True
-        print(f"🛌 Display sleeping due to {SLEEP_TIMEOUT}s of no playback")
         time.sleep(0.05)
         last_display_time = 0
         clear_framebuffer()

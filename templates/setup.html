@@ -663,7 +663,7 @@
             });
         }
     }
-    setInterval(checkAndUpdateDeviceStatus, 5000);
+    setInterval(checkAndUpdateDeviceStatus, 1000);
     function toggleTheme() {
         const currentTheme = document.body.getAttribute('data-theme');
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -1289,7 +1289,7 @@
         if (themeButton) {
             themeButton.innerHTML = savedTheme === 'dark' ? '☀' : '☾';
         }
-        setInterval(checkAndUpdateDeviceStatus, 5000);
+        setInterval(checkAndUpdateDeviceStatus, 1000);
         const progressContainer = document.getElementById('progressBarContainer');
         if (progressContainer) {
             progressContainer.addEventListener('click', seekToPosition);

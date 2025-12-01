@@ -390,7 +390,7 @@ def start_hud():
         def monitor_current_track_state():
             while hud_process and hud_process.poll() is None:
                 log_current_track_state()
-                time.sleep(1)
+                time.sleep(2)
         output_thread = threading.Thread(target=log_hud_output)
         output_thread.daemon = True
         output_thread.start()
@@ -548,7 +548,7 @@ def status_hud():
 def status_neonwifi():
     return {'running': is_neonwifi_running()}
 
-def rate_limit(min_interval=0.5):
+def rate_limit(min_interval=1):
     def decorator(f):
         last_called = [0.0]
         @wraps(f)
@@ -683,15 +683,29 @@ def spotify_auth_page():
 @app.route('/spotify_device_status', methods=['GET'])
 def spotify_device_status():
     try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 5:
+                has_device = track_data.get('device_active', False)
+                device_name = track_data.get('device_name', '')
+                return {
+                    'success': True,
+                    'has_active_device': has_device,
+                    'device_name': device_name if has_device else None,
+                    'cached': True
+                }
         sp, message = get_spotify_client()
         if not sp:
             return {'success': False, 'has_active_device': False, 'error': message}
         playback = sp.current_playback()
         has_active_device = playback is not None and playback.get('device') is not None
         return {
-            'success': True, 
+            'success': True,
             'has_active_device': has_active_device,
-            'device_name': playback['device']['name'] if has_active_device else None
+            'device_name': playback['device']['name'] if has_active_device else None,
+            'cached': False
         }
     except Exception as e:
         logger = logging.getLogger('Launcher')
@@ -895,7 +909,7 @@ def stream_current_track():
                     yield f"data: {json.dumps(track_data)}\n\n"
                     last_data = track_data
                 update_counter = 0
-            time.sleep(0.5)
+            time.sleep(2)
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/api/current_track')
@@ -1052,6 +1066,13 @@ def spotify_previous():
 @app.route('/spotify_get_volume', methods=['GET'])
 def spotify_get_volume():
     try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 5:
+                cached_volume = track_data.get('volume_percent', 50)
+                return {'success': True, 'volume': cached_volume, 'cached': True}
         sp, message = get_spotify_client()
         if not sp:
             return {'success': False, 'error': message}
@@ -1060,9 +1081,9 @@ def spotify_get_volume():
         playback = sp.current_playback()
         if playback and 'device' in playback:
             current_volume = playback['device'].get('volume_percent', 50)
-            return {'success': True, 'volume': current_volume}
+            return {'success': True, 'volume': current_volume, 'cached': False}
         else:
-            return {'success': True, 'volume': 50}
+            return {'success': True, 'volume': 50, 'cached': False}
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Get volume error: {str(e)}")
@@ -1210,7 +1231,7 @@ def spotify_toggle_shuffle():
         requested_state = request.json.get('state', not current_shuffle_state)
         if current_shuffle_state != requested_state:
             sp.shuffle(requested_state)
-        time.sleep(0.5)
+        time.sleep(1)
         updated_state = sp.current_playback()
         actual_new_state = updated_state.get('shuffle_state', False) if updated_state else False
         action = "Shuffle Enabled" if actual_new_state else "Shuffle Disabled"
@@ -1228,15 +1249,23 @@ def spotify_toggle_shuffle():
 @app.route('/spotify_get_shuffle_state', methods=['GET'])
 def spotify_get_shuffle_state():
     try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            
+            if time.time() - timestamp < 5:
+                is_shuffling = track_data.get('shuffle_state', False)
+                return jsonify({'is_shuffling': is_shuffling, 'cached': True})
         sp, message = get_spotify_client()
         if not sp:
             return jsonify({'is_shuffling': False, 'error': message})
         current_state = sp.current_playback()
         if current_state and 'shuffle_state' in current_state:
             is_shuffling = current_state.get('shuffle_state', False)
-            return jsonify({'is_shuffling': is_shuffling})
+            return jsonify({'is_shuffling': is_shuffling, 'cached': False})
         else:
-            return jsonify({'is_shuffling': False})
+            return jsonify({'is_shuffling': False, 'cached': False})
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error getting shuffle state: {e}")
