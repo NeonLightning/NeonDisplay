@@ -35,13 +35,18 @@ python-packages:
 	@echo "$(GREEN)Setting up Python virtual environment with uv...$(NC)"
 	sudo mkdir -p $(PROJECT_DIR)
 	sudo chown $$USER:$$USER $(PROJECT_DIR)
-	uv venv $(VENV_DIR)
+	@if [ -d "$(VENV_DIR)" ] && [ -f "$(VENV_DIR)/bin/python3" ]; then \
+		echo "$(YELLOW)Virtual environment already exists at $(VENV_DIR), skipping creation.$(NC)"; \
+	else \
+		uv venv $(VENV_DIR); \
+		echo "$(GREEN)Virtual environment created at $(VENV_DIR)$(NC)"; \
+	fi
 	@echo "$(GREEN)Installing Python packages with uv...$(NC)"
 	export UV_CONCURRENT_DOWNLOADS=3
 	export UV_CONCURRENT_INSTALLS=3
 	export UV_CONCURRENT_BUILDS=3
 	bash ./swap.sh
-	uv pip install --python $(VENV_DIR)/bin/python spotipy st7789 eink-wave evdev numpy pillow flask pycairo dbus-python setuptools wheel toml
+	uv pip install --python $(VENV_DIR)/bin/python spotipy st7789 numpy eink-wave evdev pillow flask pycairo dbus-python setuptools wheel toml
 	@echo "$(GREEN)All Python packages installed in virtual environment$(NC)"
 	@echo "$(GREEN)Copying project files...$(NC)"
 	cp -r . $(PROJECT_DIR)/

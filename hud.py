@@ -405,14 +405,15 @@ def cache_weather(lat, lon, data):
     weather_cache[f"{lat:.2f}_{lon:.2f}"] = (data, time.time())
 
 def cleanup_caches():
-    global text_bbox_cache_local
     get_cached_bg.cache_clear()
     get_cached_text_bbox.cache_clear()
     if len(text_bbox_cache_local) > 50:
         text_bbox_cache_local.clear()
     if len(album_bg_cache) > 3:
         keys = list(album_bg_cache.keys())[-3:]
-        album_bg_cache = {k: album_bg_cache[k] for k in keys}
+        keep = {k: album_bg_cache[k] for k in keys}
+        album_bg_cache.clear()
+        album_bg_cache.update(keep)
     if len(scrolling_text_cache) > 3:
         scrolling_text_cache.clear()
 
@@ -1452,10 +1453,10 @@ def prepare_track_state_data(track_data):
                 'duration': 0,
                 'is_playing': False,
                 'timestamp': time.time(),
-                'shuffle_state': bool(track_data.get('shuffle_state', False)),
-                'volume_percent': int(track_data.get('volume_percent', 50)),
-                'device_name': track_data.get('device_name', ''),
-                'device_active': bool(track_data.get('device_active', False))
+                'shuffle_state': False,
+                'volume_percent': 50,
+                'device_name': '',
+                'device_active': False
             }
         }
 

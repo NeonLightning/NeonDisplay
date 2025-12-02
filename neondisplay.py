@@ -202,9 +202,11 @@ def advanced_config():
     config = load_config()
     ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
     available_css = get_available_css_files()
+    spotify_configured = bool(config["api_keys"]["client_id"] and config["api_keys"]["client_secret"])
+    spotify_authenticated, _ = check_spotify_auth()
     if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
         ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
-    return render_template('advanced_config.html', config=config, ui_config=ui_config, available_css=available_css)
+    return render_template('advanced_config.html', config=config, ui_config=ui_config, available_css=available_css,spotify_configured=spotify_configured, spotify_authenticated=spotify_authenticated)
 
 @app.route('/save_all_config', methods=['POST'])
 def save_all_config():
@@ -384,7 +386,8 @@ def spotify_auth_page():
             show_dialog=True
         )
         auth_url = sp_oauth.get_authorize_url()
-        return render_template('spotify_auth.html', auth_url=auth_url)
+        ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
+        return render_template('spotify_auth.html', auth_url=auth_url, ui_config=ui_config)
     except Exception as e:
         flash('error', f'Spotify authentication error: {str(e)}')
         return redirect(url_for('index'))
@@ -1706,6 +1709,7 @@ def init_song_database():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_played ON song_plays(last_played)')
     conn.commit()
     return conn
+song_db_conn = init_song_database()
 
 def backup_db_if_needed():
     try:
@@ -1732,6 +1736,18 @@ def update_song_count(song_info):
         try:
             conn = sqlite3.connect('song_stats.db', check_same_thread=False)
             cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS song_plays (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    song_hash TEXT UNIQUE,
+                    song_data TEXT,
+                    play_count INTEGER DEFAULT 0,
+                    last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_count ON song_plays(play_count)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_hash ON song_plays(song_hash)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_played ON song_plays(last_played)')
             if not song_info or not current_song:
                 conn.close()
                 return
@@ -1795,6 +1811,15 @@ def load_song_counts():
     try:
         conn = sqlite3.connect('song_stats.db', check_same_thread=False)
         cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS song_plays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                song_hash TEXT UNIQUE,
+                song_data TEXT,
+                play_count INTEGER DEFAULT 0,
+                last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         cursor.execute('''
             SELECT song_data, play_count 
             FROM song_plays 
@@ -1910,6 +1935,7 @@ def main():
     load_config()
     logger = setup_logging()
     logger.info("🚀 Starting HUD Launcher")
+    init_song_database()
     def get_lan_ips():
         ips = []
         try:
