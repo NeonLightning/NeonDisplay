@@ -24,10 +24,7 @@ all: system-deps python-packages config setup-service
 system-deps:
 	@echo "$(GREEN)Installing system dependencies...$(NC)"
 	sudo apt update
-	sudo apt install -y python3-pip python3-venv curl hostapd dnsmasq
-	sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev git
-	sudo apt install -y liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev
-	sudo apt install -y libopenblas-dev libcairo2-dev libdbus-1-dev
+	sudo apt install -y python3-pip python3-venv curl hostapd dnsmasq liblcms2-dev libwebp-dev libtiff-dev libopenjp2-7-dev libxcb1-dev libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev git libopenblas-dev libcairo2-dev libdbus-1-dev
 	@echo "$(GREEN)Installing uv system-wide...$(NC)"
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 	sudo mv /root/.local/bin/uv /usr/local/bin/
@@ -40,12 +37,11 @@ python-packages:
 	sudo chown $$USER:$$USER $(PROJECT_DIR)
 	uv venv $(VENV_DIR)
 	@echo "$(GREEN)Installing Python packages with uv...$(NC)"
-	# Use uv pip to install packages in the virtual environment
-	uv pip install --python $(VENV_DIR)/bin/python spotipy st7789 eink-wave
-	uv pip install --python $(VENV_DIR)/bin/python evdev numpy pillow flask
-	uv pip install --python $(VENV_DIR)/bin/python pycairo dbus-python
-	uv pip install --python $(VENV_DIR)/bin/python toml
-	uv pip install --python $(VENV_DIR)/bin/python setuptools wheel
+	export UV_CONCURRENT_DOWNLOADS=3
+	export UV_CONCURRENT_INSTALLS=3
+	export UV_CONCURRENT_BUILDS=3
+	bash ./swap.sh
+	uv pip install --python $(VENV_DIR)/bin/python spotipy st7789 eink-wave evdev numpy pillow flask pycairo dbus-python setuptools wheel toml
 	@echo "$(GREEN)All Python packages installed in virtual environment$(NC)"
 	@echo "$(GREEN)Copying project files...$(NC)"
 	cp -r . $(PROJECT_DIR)/

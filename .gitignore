@@ -1,13 +1,5 @@
 .spotify_cache
 config.toml
-hud35.zip
-songs.toml
-hud35.log
 .lgd-nfy0
 .current_track_state.toml
-song_counts.toml
-swap.sh
 song_counts.bin
-backup.img
-shrinkbackup.img.gz
-RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046/
