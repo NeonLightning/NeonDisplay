@@ -449,7 +449,7 @@
     <div id="spotifyControlStatus" class="status" style="display: none; margin-top: 10px;"></div>
     <div class="container">
         <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 30px;">
-            <div></div> <!-- Left spacer -->
+            <div></div>
             <h1><u>NeonDisplay</u></h1>
             <div style="display: flex; justify-content: flex-end;">
             <div id="weatherDisplay" style="display: flex; align-items: center; gap: 15px; background: var(--bg-tertiary); padding: 10px 15px; border-radius: 8px; border: 2px solid var(--border-color); min-width: 300px; justify-content: center;">
@@ -469,7 +469,7 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        {% if config.settings.enable_current_track_display and spotify_authenticated %}
+        {% if hud_running and config.settings.enable_current_track_display and spotify_authenticated %}
         <div id="noDeviceMessage" class="section">
             <div class="status warning">
                 ⚠️ No active Spotify device found. 
@@ -630,6 +630,18 @@
     let lastLyricsFetch = 0;
     const LYRICS_COOLDOWN = 1000;
     let spotifyInitialized = false;
+    function autoDismissMessages() {
+        const messages = document.querySelectorAll('.status.success, .status.error, .status.info, .status.warning');
+        messages.forEach(message => {
+            setTimeout(() => {
+                message.style.transition = 'opacity 0.5s ease';
+                message.style.opacity = '0';
+                setTimeout(() => {
+                    message.style.display = 'none';
+                }, 500);
+            }, 5000);
+        });
+    }
     function getRateLimitForAction(action) {
         const limits = {'play': 2500,'pause': 1500,'next': 800,'previous': 800,'volume': 300,'seek': 800};
         return limits[action] || 1000;
@@ -667,7 +679,6 @@
             })
             .catch(error => {
                 console.error('Error checking device status:', error);
-                // On error, assume no device
                 const noDeviceMessage = document.getElementById('noDeviceMessage');
                 const spotifyControls = document.getElementById('spotifyControlsSection');
                 if (noDeviceMessage) noDeviceMessage.style.display = 'block';
@@ -1342,41 +1353,98 @@
             pauseBtn.style.display = 'none';
         }
     }
-    function updateAppStatus() {
-        fetch('/status/hud')
-            .then(response => response.json())
-            .then(data => {
-                const hudStatus = document.querySelector('.control-panel:nth-child(1) .app-status');
-                if (hudStatus) {
-                    if (data.running) {
-                        hudStatus.textContent = 'Status: ✓ RUNNING';
-                        hudStatus.className = 'app-status running';
+    async function updateAppStatus() {
+        try {
+            const [hudResponse, neonwifiResponse] = await Promise.all([
+                fetch('/status/hud'),
+                fetch('/status/neonwifi')
+            ]);
+            const hudData = await hudResponse.json();
+            const neonwifiData = await neonwifiResponse.json();
+            const hudPanel = document.querySelector('.app-controls .control-panel:first-child');
+            if (hudPanel) {
+                const hudStatus = hudPanel.querySelector('.app-status');
+                const hudForm = hudPanel.querySelector('form');
+                const hudButton = hudPanel.querySelector('button[type="submit"]');
+                
+                const currentText = hudStatus ? hudStatus.textContent : '';
+                const isCurrentlyRunning = currentText.includes('RUNNING');
+                
+                if (isCurrentlyRunning !== hudData.running) {
+                    if (hudData.running) {
+                        if (hudStatus) {
+                            hudStatus.textContent = 'Status: ✓ RUNNING';
+                            hudStatus.className = 'app-status running';
+                        }
+                        if (hudForm) hudForm.action = '/stop_hud';
+                        if (hudButton) {
+                            hudButton.textContent = '■ Stop hud';
+                            hudButton.className = 'btn-danger';
+                        }
                     } else {
-                        hudStatus.textContent = 'Status: ✕ STOPPED';
-                        hudStatus.className = 'app-status stopped';
+                        if (hudStatus) {
+                            hudStatus.textContent = 'Status: ✕ STOPPED';
+                            hudStatus.className = 'app-status stopped';
+                        }
+                        if (hudForm) hudForm.action = '/start_hud';
+                        if (hudButton) {
+                            hudButton.textContent = '▶ Start hud';
+                            hudButton.className = 'btn-success';
+                        }
                     }
                 }
-            })
-            .catch(error => console.error('Error fetching hud status:', error));
-        fetch('/status/neonwifi')
-            .then(response => response.json())
-            .then(data => {
-                const neonwifiStatus = document.querySelector('.control-panel:nth-child(2) .app-status');
-                if (neonwifiStatus) {
-                    if (data.running) {
-                        neonwifiStatus.textContent = 'Status: ✓ RUNNING';
-                        neonwifiStatus.className = 'app-status running';
+            }
+            const neonwifiPanel = document.querySelector('.app-controls .control-panel:last-child');
+            if (neonwifiPanel) {
+                const neonwifiStatus = neonwifiPanel.querySelector('.app-status');
+                const neonwifiForm = neonwifiPanel.querySelector('form');
+                const neonwifiButton = neonwifiPanel.querySelector('button[type="submit"]');
+                const currentText = neonwifiStatus ? neonwifiStatus.textContent : '';
+                const isCurrentlyRunning = currentText.includes('RUNNING');
+                if (isCurrentlyRunning !== neonwifiData.running) {
+                    if (neonwifiData.running) {
+                        if (neonwifiStatus) {
+                            neonwifiStatus.textContent = 'Status: ✓ RUNNING';
+                            neonwifiStatus.className = 'app-status running';
+                        }
+                        if (neonwifiForm) neonwifiForm.action = '/stop_neonwifi';
+                        if (neonwifiButton) {
+                            neonwifiButton.textContent = '■ Stop WiFi Manager';
+                            neonwifiButton.className = 'btn-danger';
+                        }
                     } else {
-                        neonwifiStatus.textContent = 'Status: ✕ STOPPED';
-                        neonwifiStatus.className = 'app-status stopped';
+                        if (neonwifiStatus) {
+                            neonwifiStatus.textContent = 'Status: ✕ STOPPED';
+                            neonwifiStatus.className = 'app-status stopped';
+                        }
+                        if (neonwifiForm) neonwifiForm.action = '/start_neonwifi';
+                        if (neonwifiButton) {
+                            neonwifiButton.textContent = '▶ Start WiFi Manager';
+                            neonwifiButton.className = 'btn-success';
+                        }
                     }
                 }
-            })
-            .catch(error => console.error('Error fetching neonwifi status:', error));
+            }
+            
+        } catch (error) {
+            console.error('Error updating app status:', error);
+        }
     }
-    setInterval(updateAppStatus, 3000);
     document.addEventListener('DOMContentLoaded', function() {
+        autoDismissMessages();
         startWeatherUpdates();
+        const statusDivs = document.querySelectorAll('.status:not(.app-status)');
+        statusDivs.forEach(div => {
+            if (div.id !== 'spotifyControlStatus' && div.id !== 'lyricsStatus') {
+                setTimeout(() => {
+                    div.style.transition = 'opacity 0.5s ease';
+                    div.style.opacity = '0';
+                    setTimeout(() => {
+                        div.style.display = 'none';
+                    }, 500);
+                }, 4000);
+            }
+        });
         const savedTheme = '{{ ui_config.theme }}' || 'dark';
         document.body.setAttribute('data-theme', savedTheme);
         const themeButton = document.querySelector('.theme-toggle');
@@ -1408,6 +1476,7 @@
             lyricsContent.style.display = 'none';
         }
         updateAppStatus();
+        setInterval(updateAppStatus, 3000);
     });
 </script>
 </body>

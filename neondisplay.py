@@ -8,6 +8,8 @@ from logging.handlers import RotatingFileHandler
 import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil
 
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+
 @app.after_request
 def add_header(response):
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
@@ -15,16 +17,6 @@ def add_header(response):
     response.headers['Expires'] = '0'
     return response
 app.secret_key = 'hud-launcher-secret-key'
-
-def get_available_css_files():
-    static_dir = app.static_folder 
-    if not os.path.isdir(static_dir):
-        return ["colors.css"] 
-    css_files = [f for f in os.listdir(static_dir) if f.endswith('.css')]
-    if not css_files:
-        return ["colors.css"] 
-    css_files.sort() 
-    return css_files
 
 CONFIG_PATH = "config.toml"
 DEFAULT_CONFIG = {
@@ -107,398 +99,7 @@ hud_process = None
 neonwifi_process = None
 last_logged_song = None
 
-def load_config():
-    if not os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, 'w') as f:
-            toml.dump(DEFAULT_CONFIG, f)
-        return DEFAULT_CONFIG.copy()
-    
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return toml.load(f)
-    except Exception as e:
-        print(f"Error loading config: {e}")
-        print("Using default configuration")
-        return DEFAULT_CONFIG.copy()
-
-def save_config(config):
-    with open(CONFIG_PATH, 'w') as f:
-        toml.dump(config, f)
-
-def setup_logging():
-    logging.getLogger().handlers = []
-    logger = logging.getLogger('Launcher')
-    logger.handlers = []
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-    try:
-        config = load_config()
-        log_config = config.get("logging", {})
-        max_lines = log_config.get("max_log_lines", 10000)
-        max_bytes = max_lines * 100  
-        backup_count = log_config.get("max_backup_files", 5)
-        backup_folder = "backuplogs"
-        os.makedirs(backup_folder, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            os.path.join(backup_folder, 'neondisplay.log'),
-            maxBytes=max_bytes, 
-            backupCount=backup_count
-        )
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-        log_file_path = os.path.join(backup_folder, 'neondisplay.log')
-        if not os.path.exists(log_file_path) or os.path.getsize(log_file_path) == 0:
-            with open(log_file_path, 'a') as f:
-                f.write(f"Log file initialized at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        logger.info("✅ Logging system initialized - console and file handlers active")
-    except Exception as e:
-        print(f"Failed to setup file logging: {e}")
-        logger.error(f"File logging setup failed: {e}")
-    werkzeug_logger = logging.getLogger('werkzeug')
-    werkzeug_logger.setLevel(logging.WARNING)
-    if not werkzeug_logger.handlers:
-        console_handler_werkzeug = logging.StreamHandler(sys.stdout)
-        console_handler_werkzeug.setLevel(logging.WARNING)
-        werkzeug_logger.addHandler(console_handler_werkzeug)
-    return logger
-
-def check_internet_connection(timeout=5):
-    try:
-        response = requests.get("http://www.google.com", timeout=timeout)
-        return response.status_code == 200
-    except requests.RequestException:
-        try:
-            import socket
-            socket.create_connection(("8.8.8.8", 53), timeout=timeout)
-            return True
-        except socket.error:
-            return False
-
-def wait_for_internet(timeout=60, check_interval=5):
-    logger = logging.getLogger('Launcher')
-    logger.info("🔍 Waiting for internet connection...")
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if check_internet_connection():
-            logger.info("✅ Internet connection established")
-            return True
-        logger.info("⏳ No internet connection, waiting...")
-        time.sleep(check_interval)
-    logger.error("❌ Internet connection timeout")
-    return False
-
-def safe_check_spotify_auth():
-    if not check_internet_connection(timeout=3):
-        return False, "No internet connection"
-    return check_spotify_auth()
-
-def auto_launch_applications():
-    logger = logging.getLogger('Launcher')
-    config = load_config()
-    auto_config = config.get("auto_start", {})
-    logger.info("🔧 Auto-launching applications based on configuration...")
-    if auto_config.get("check_internet", True):
-        if not wait_for_internet(timeout=30):
-            logger.warning("❌ No internet - starting neonwifi if enabled")
-            if auto_config.get("auto_start_neonwifi", True):
-                start_neonwifi()
-            return
-    if auto_config.get("auto_start_neonwifi", True):
-        start_neonwifi()
-    if auto_config.get("auto_start_hud", True):
-        spotify_authenticated, _ = check_spotify_auth()
-        config_ready = is_config_ready()
-        if config_ready and spotify_authenticated:
-            start_hud()
-            logger.info("✅ HUD auto-started")
-        else:
-            logger.warning("⚠️ HUD not auto-started: configuration incomplete")
-
-def is_config_ready():
-    config = load_config()
-    return all([
-        config["api_keys"]["openweather"],
-        config["api_keys"]["client_id"], 
-        config["api_keys"]["client_secret"]
-    ])
-
-def check_spotify_auth():
-    config = load_config()
-    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
-        return False, "Missing client credentials"
-    try:
-        if not os.path.exists(".spotify_cache"):
-            return False, "No cached token found"
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
-            cache_path=".spotify_cache"
-        )
-        token_info = sp_oauth.get_cached_token()
-        if not token_info:
-            return False, "No valid token found"
-        if sp_oauth.is_token_expired(token_info):
-            logger = logging.getLogger('Launcher')
-            logger.info("Token expired, attempting refresh...")
-            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-            
-            if not token_info:
-                return False, "Token refresh failed"
-        try:
-            sp = spotipy.Spotify(auth=token_info['access_token'])
-            current_user = sp.current_user()
-            return True, f"Authenticated as {current_user.get('display_name', 'Unknown User')}"
-        except Exception as e:
-            logger = logging.getLogger('Launcher')
-            logger.error(f"Token validation failed: {e}")
-            return False, f"Token validation failed: {str(e)}"
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error checking Spotify auth: {e}")
-        return False, f"Authentication error: {str(e)}"
-
-def get_spotify_client():
-    config = load_config()
-    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
-        return None, "Missing client credentials"
-    try:
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
-            cache_path=".spotify_cache"
-        )
-        token_info = sp_oauth.get_cached_token()
-        if not token_info:
-            return None, "No valid token available"
-        if sp_oauth.is_token_expired(token_info):
-            logger = logging.getLogger('Launcher')
-            logger.info("Refreshing expired token...")
-            try:
-                token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-                if not token_info:
-                    return None, "Failed to refresh token"
-            except Exception as e:
-                logger.error(f"Token refresh error: {e}")
-                return None, f"Token refresh failed: {str(e)}"
-        sp = spotipy.Spotify(auth=token_info['access_token'])
-        return sp, "Success"
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error creating Spotify client: {e}")
-        return None, f"Client creation failed: {str(e)}"
-
-def is_hud_running():
-    global hud_process
-    current_time = time.time()
-    if hasattr(is_hud_running, '_last_check') and current_time - is_hud_running._last_check < 2:
-        return is_hud_running._cached_result
-    if hud_process is not None:
-        if hud_process.poll() is None:
-            result = True
-        else:
-            hud_process = None
-            result = False
-    else:
-        try:
-            result = bool(subprocess.run(['pgrep', '-f', 'hud.py'], 
-                            capture_output=True, text=True).stdout.strip())
-        except Exception:
-            result = False
-    is_hud_running._cached_result = result
-    is_hud_running._last_check = current_time
-    return result
-
-def is_neonwifi_running():
-    global neonwifi_process
-    if neonwifi_process is not None:
-        if neonwifi_process.poll() is None:
-            return True
-        else:
-            neonwifi_process = None
-    try:
-        result = subprocess.run(['pgrep', '-f', 'neonwifi.py'], 
-                            capture_output=True, text=True)
-        return bool(result.stdout.strip())
-    except Exception:
-        return False
-
-def parse_song_from_log(log_line):
-    if 'Now playing:' in log_line:
-        try:
-            if '🎵 Now playing:' in log_line:
-                song_part = log_line.split('🎵 Now playing: ')[1].strip()
-            else:
-                song_part = log_line.split('Now playing: ')[1].strip()
-            separators = [' -- ', ' - ', ' – ']
-            artist_part = 'Unknown Artist'
-            song = song_part
-            for separator in separators:
-                if separator in song_part:
-                    artist_part, song = song_part.split(separator, 1)
-                    break
-            artists = []
-            if artist_part != 'Unknown Artist':
-                artists = [artist.strip() for artist in artist_part.split(',')]
-                artists = [artist for artist in artists if artist]
-            if not artists:
-                artists = ['Unknown Artist']
-                artist_part = 'Unknown Artist'
-            return {
-                'song': song.strip(),
-                'artist': artist_part.strip(),
-                'artists': artists,
-                'full_track': f"{artist_part} -- {song}".strip()
-            }
-        except Exception as e:
-            logger = logging.getLogger('Launcher')
-            logger.error(f"Error parsing song from log: {e}")
-            return None
-    return None
-
-def start_hud():
-    global hud_process, last_logged_song
-    logger = logging.getLogger('Launcher')
-    if is_hud_running():
-        return False, "HUD is already running"
-    try:
-        hud_process = subprocess.Popen(
-            [sys.executable, 'hud.py'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        def log_hud_output():
-            for line in iter(hud_process.stdout.readline, ''):
-                if line.strip():
-                    logger.info(f"[HUD] {line.strip()}")
-                    song_info = parse_song_from_log(line)
-                    if song_info:
-                        update_song_count(song_info)
-        def monitor_current_track_state():
-            while hud_process and hud_process.poll() is None:
-                log_current_track_state()
-                time.sleep(2)
-        output_thread = threading.Thread(target=log_hud_output)
-        output_thread.daemon = True
-        output_thread.start()
-        track_monitor_thread = threading.Thread(target=monitor_current_track_state)
-        track_monitor_thread.daemon = True
-        track_monitor_thread.start()
-        time.sleep(2)
-        if hud_process.poll() is None:
-            return True, "HUD started successfully"
-        else:
-            return False, "HUD failed to start (check neondisplay.log for details)"
-    except Exception as e:
-        logger.error(f"Error starting HUD: {str(e)}")
-        return False, f"Error starting HUD: {str(e)}"
-
-def stop_hud():
-    global hud_process, last_logged_song
-    logger = logging.getLogger('Launcher')
-    if not is_hud_running():
-        return False, "HUD is not running"
-    try:
-        logger.info("Stopping HUD...")
-        hud_process.terminate()
-        try:
-            hud_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            hud_process.kill()
-            hud_process.wait()
-        hud_process = None
-        last_logged_song = None
-        try:
-            if os.path.exists('.current_track_state.toml'):
-                with open('.current_track_state.toml', 'w') as f:
-                    empty_state = {
-                        'current_track': {
-                            'title': 'No track playing',
-                            'artists': '',
-                            'album': '',
-                            'current_position': 0,
-                            'duration': 0,
-                            'is_playing': False,
-                            'timestamp': time.time()
-                        }
-                    }
-                    toml.dump(empty_state, f)
-                logger.info("Cleared current track state")
-        except Exception as e:
-            logger.error(f"Error clearing track state: {e}")
-        
-        logger.info("HUD stopped successfully")
-        return True, "HUD stopped successfully"
-    except Exception as e:
-        logger.error(f"Error stopping HUD: {str(e)}")
-        return False, f"Error stopping HUD: {str(e)}"
-
-def start_neonwifi():
-    global neonwifi_process
-    logger = logging.getLogger('Launcher')
-    if is_neonwifi_running():
-        return False, "neonwifi is already running"
-    try:
-        neonwifi_process = subprocess.Popen(
-            [sys.executable, 'neonwifi.py'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        def log_neonwifi_output():
-            for line in iter(neonwifi_process.stdout.readline, ''):
-                if line.strip():
-                    logger.info(f"[neonwifi] {line.strip()}")
-        output_thread = threading.Thread(target=log_neonwifi_output)
-        output_thread.daemon = True
-        output_thread.start()
-        time.sleep(3)
-        if neonwifi_process.poll() is None:
-            return True, "neonwifi started successfully"
-        else:
-            return False, "neonwifi failed to start (check neondisplay.log for details)"
-    except Exception as e:
-        logger.error(f"Error starting neonwifi: {str(e)}")
-        return False, f"Error starting neonwifi: {str(e)}"
-
-def stop_neonwifi():
-    global neonwifi_process
-    logger = logging.getLogger('Launcher')
-    if not is_neonwifi_running():
-        return False, "neonwifi is not running"
-    try:
-        logger.info("Stopping neonwifi...")
-        if neonwifi_process:
-            neonwifi_process.terminate()
-            try:
-                neonwifi_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                neonwifi_process.kill()
-                neonwifi_process.wait()
-            neonwifi_process = None
-        subprocess.run(['pkill', '-f', 'neonwifi.py'], check=False)
-        time.sleep(2)
-        logger.info("neonwifi stopped successfully")
-        return True, "neonwifi stopped successfully"
-    except Exception as e:
-        logger.error(f"Error stopping neonwifi: {str(e)}")
-        return False, f"Error stopping neonwifi: {str(e)}"
-
+# ============== HELPER FUNCTIONS ==============
 
 def search_lyrics_for_track(track_name, artist_name):
     try:
@@ -540,13 +141,21 @@ def search_lyrics_for_track(track_name, artist_name):
         logger.error(f"Lyrics search unexpected error: {e}")
         return {'success': False, 'error': f'Unexpected error: {str(e)}'}
 
-@app.route('/status/hud')
-def status_hud():
-    return {'running': is_hud_running()}
-
-@app.route('/status/neonwifi')
-def status_neonwifi():
-    return {'running': is_neonwifi_running()}
+def generate_chart_data(stats, label_type):
+    if not stats:
+        return {'labels': [], 'data': [], 'colors': []}
+    labels = list(stats.keys())
+    data = list(stats.values())
+    colors = []
+    for i in range(len(labels)):
+        hue = (i * 137.5) % 360
+        colors.append(f'hsl({hue}, 70%, 60%)')
+    return {
+        'labels': labels,
+        'data': data,
+        'colors': colors,
+        'label_type': label_type
+    }
 
 def rate_limit(min_interval=1):
     def decorator(f):
@@ -562,9 +171,7 @@ def rate_limit(min_interval=1):
         return wrapped
     return decorator
 
-@app.context_processor
-def utility_processor():
-    return dict(zip=zip)
+# ============== CONFIGURATION ROUTES ==============
 
 @app.route('/')
 def index():
@@ -590,15 +197,14 @@ def index():
         ui_config=ui_config
     )
 
-@app.route('/toggle_theme', methods=['POST'])
-def toggle_theme():
+@app.route('/advanced_config')
+def advanced_config():
     config = load_config()
-    new_theme = request.form.get('theme', 'dark')
-    if 'ui' not in config:
-        config['ui'] = {}
-    config['ui']['theme'] = new_theme
-    save_config(config)
-    return redirect(request.referrer or url_for('index'))
+    ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
+    available_css = get_available_css_files()
+    if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
+        ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
+    return render_template('advanced_config.html', config=config, ui_config=ui_config, available_css=available_css)
 
 @app.route('/save_all_config', methods=['POST'])
 def save_all_config():
@@ -622,826 +228,6 @@ def save_all_config():
         start_neonwifi()
     flash('success', 'All settings saved successfully!')
     return redirect(url_for('index'))
-
-@app.route('/start_hud', methods=['POST'])
-def start_hud_route():
-    success, message = start_hud()
-    if success:
-        flash('success', message)
-    else:
-        flash('error', message)
-    return redirect(url_for('index'))
-
-@app.route('/stop_hud', methods=['POST'])
-def stop_hud_route():
-    success, message = stop_hud()
-    if success:
-        flash('success', message)
-    else:
-        flash('error', message)
-    return redirect(url_for('index'))
-
-@app.route('/start_neonwifi', methods=['POST'])
-def start_neonwifi_route():
-    success, message = start_neonwifi()
-    if success:
-        flash('success', message)
-    else:
-        flash('error', message)
-    return redirect(url_for('index'))
-
-@app.route('/stop_neonwifi', methods=['POST'])
-def stop_neonwifi_route():
-    success, message = stop_neonwifi()
-    if success:
-        flash('success', message)
-    else:
-        flash('error', message)
-    return redirect(url_for('index'))
-
-@app.route('/spotify_auth')
-def spotify_auth_page():
-    config = load_config()
-    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
-        flash('error', 'Please save Spotify Client ID and Secret first.')
-        return redirect(url_for('index'))
-    try:
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
-            cache_path=".spotify_cache",
-            show_dialog=True
-        )
-        auth_url = sp_oauth.get_authorize_url()
-        return render_template('spotify_auth.html', auth_url=auth_url)
-    except Exception as e:
-        flash('error', f'Spotify authentication error: {str(e)}')
-        return redirect(url_for('index'))
-
-@app.route('/spotify_device_status', methods=['GET'])
-def spotify_device_status():
-    try:
-        if os.path.exists('.current_track_state.toml'):
-            state_data = toml.load('.current_track_state.toml')
-            track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 5:
-                has_device = track_data.get('device_active', False)
-                device_name = track_data.get('device_name', '')
-                return {
-                    'success': True,
-                    'has_active_device': has_device,
-                    'device_name': device_name if has_device else None,
-                    'cached': True
-                }
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'has_active_device': False, 'error': message}
-        playback = sp.current_playback()
-        has_active_device = playback is not None and playback.get('device') is not None
-        return {
-            'success': True,
-            'has_active_device': has_active_device,
-            'device_name': playback['device']['name'] if has_active_device else None,
-            'cached': False
-        }
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error checking device status: {e}")
-        return {'success': False, 'has_active_device': False, 'error': str(e)}
-
-@app.route('/process_callback_url', methods=['POST'])
-def process_callback_url():
-    config = load_config()
-    callback_url = request.form.get('callback_url', '').strip()
-    if not callback_url:
-        flash('error', 'Please paste the callback URL')
-        return redirect(url_for('spotify_auth_page'))
-    try:
-        parsed_url = urllib.parse.urlparse(callback_url)
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        if 'error' in query_params:
-            error = query_params['error'][0]
-            flash('error', f'Spotify authentication failed: {error}')
-            return redirect(url_for('index'))
-        if 'code' not in query_params:
-            flash('error', 'No authorization code found in the URL.')
-            return redirect(url_for('spotify_auth_page'))
-        code = query_params['code'][0]
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
-            cache_path=".spotify_cache"
-        )
-        token_info = sp_oauth.get_access_token(code)
-        if token_info:
-            flash('success', 'Spotify authentication successful!')
-        else:
-            flash('error', 'Spotify authentication failed.')
-    except Exception as e:
-        flash('error', f'Authentication error: {str(e)}')
-        if os.path.exists(".spotify_cache"):
-            os.remove(".spotify_cache")
-    return redirect(url_for('index'))
-
-@app.route('/api/current_weather')
-def api_current_weather():
-    try:
-        weather_file = '.weather_state.toml'
-        if os.path.exists(weather_file):
-            state_data = toml.load(weather_file)
-            weather_data = state_data.get('weather', {})
-            timestamp = weather_data.get('timestamp', 0)
-            if time.time() - timestamp < 7200:
-                return {
-                    'success': True,
-                    'weather': weather_data,
-                    'timestamp': datetime.now().isoformat()
-                }
-        return {
-            'success': True,
-            'weather': {
-                'city': 'Weather data loading...',
-                'temp': 0,
-                'description': 'Please wait',
-                'icon_id': '',
-                'timestamp': time.time()
-            },
-            'timestamp': datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error getting weather data: {e}")
-        return {
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-
-@app.route('/view_logs')
-def view_logs():
-    lines = request.args.get('lines', 100, type=int)
-    live = request.args.get('live', False, type=bool)
-    config = load_config()
-    ui_config = config.get("ui", {"theme": "dark"})
-    current_theme = ui_config.get("theme", "dark")
-
-    backup_folder = "backuplogs"
-    log_file = os.path.join(backup_folder, 'neondisplay.log')
-    backup_count = count_backup_logs()
-    
-    if not os.path.exists(log_file):
-        log_content = "Log file does not exist. It will be created when there are log messages.\n\n"
-        log_content += f"Log file path: {os.path.abspath(log_file)}"
-        if live:
-            return log_content
-        return render_template('logs.html',
-            log_content=log_content,
-            lines=lines,
-            current_theme=current_theme,
-            ui_config=ui_config,
-            backup_count=backup_count
-        )
-    try:
-        with open(log_file, 'r') as f:
-            all_lines = f.readlines()
-            recent_lines = all_lines[-lines:] if lines > 0 else all_lines
-            log_content = ''.join(recent_lines)
-        if not log_content.strip():
-            log_content = "Log file exists but is empty. No log messages yet."
-    except Exception as e:
-        log_content = f"Error reading log file: {str(e)}\n\n"
-        log_content += f"Log file path: {os.path.abspath(log_file)}"
-    if live:
-        return log_content
-    return render_template('logs.html',
-        log_content=log_content,
-        lines=lines,
-        current_theme=current_theme,
-        ui_config=ui_config,
-        backup_count=backup_count
-    )
-
-def ensure_log_file():
-    backup_folder = "backuplogs"
-    log_file = os.path.join(backup_folder, 'neondisplay.log')
-    try:
-        os.makedirs(backup_folder, exist_ok=True)
-        if not os.path.exists(log_file):
-            with open(log_file, 'w') as f:
-                f.write(f"Log file created at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            return True
-        with open(log_file, 'a') as f:
-            f.write(f"Log check at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        return True
-    except Exception as e:
-        print(f"Log file error: {e}")
-        return False
-
-def count_backup_logs():
-    backup_folder = "backuplogs"
-    count = 0
-    try:
-        if os.path.exists(backup_folder):
-            for filename in os.listdir(backup_folder):
-                if filename.startswith("neondisplay.log."):
-                    count += 1
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error counting backup logs: {e}")
-    return count
-
-@app.route('/clear_logs', methods=['POST'])
-def clear_logs():
-    log_file = 'neondisplay.log'
-    try:
-        backup_folder = "backuplogs"
-        clear_option = request.form.get('clear_option', 'current')
-        if clear_option == 'all':
-            backups_cleared = 0
-            for i in range(1, 100):
-                backup_file = os.path.join(backup_folder, f"neondisplay.log.{i}")
-                if os.path.exists(backup_file):
-                    os.remove(backup_file)
-                    backups_cleared += 1
-                else:
-                    break
-            message = f'Backup logs cleared ({backups_cleared} files removed)'
-        else:
-            with open(log_file, 'w') as f:
-                f.write(f"Logs cleared at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            message = 'Current log cleared'
-        return message, 200
-    except Exception as e:
-        return f'Error clearing logs: {str(e)}', 500
-
-@app.route('/music_stats_data')
-def music_stats_data():
-    try:
-        lines = int(request.args.get('lines', 1000))
-    except:
-        lines = 1000
-    song_stats, artist_stats, total_plays, unique_songs, unique_artists = generate_music_stats(lines)
-    song_chart_data = generate_chart_data(song_stats, 'Songs')
-    artist_chart_data = generate_chart_data(artist_stats, 'Artists')
-    song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
-    artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
-    return {
-        'song_chart_items': song_chart_items,
-        'artist_chart_items': artist_chart_items,
-        'total_plays': total_plays,
-        'unique_songs': unique_songs,
-        'unique_artists': unique_artists
-    }
-
-@app.route('/music_stats')
-def music_stats():
-    config = load_config()
-    ui_config = config.get("ui", {"theme": "dark"})
-    try:
-        lines = int(request.args.get('lines', 1000))
-    except:
-        lines = 1000
-    song_stats, artist_stats, total_plays, unique_songs, unique_artists = generate_music_stats(lines)
-    song_chart_data = generate_chart_data(song_stats, 'Songs')
-    artist_chart_data = generate_chart_data(artist_stats, 'Artists')
-    song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
-    artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
-    return render_template('music_stats.html', 
-                        song_chart_items=song_chart_items,
-                        artist_chart_items=artist_chart_items,
-                        lines=lines,
-                        total_plays=total_plays,
-                        unique_songs=unique_songs,
-                        unique_artists=unique_artists,
-                        ui_config=ui_config)
-
-@app.route('/stream/current_track')
-def stream_current_track():
-    def generate():
-        last_data = None
-        update_counter = 0
-        while True:
-            current_track = get_current_track()
-            track_data = {
-                'song': current_track['song'],
-                'artist': current_track['artist'],
-                'album': current_track['album'],
-                'progress': current_track['progress'],
-                'duration': current_track['duration'],
-                'is_playing': current_track['is_playing'],
-                'has_track': current_track['has_track'],
-                'timestamp': datetime.now().isoformat()
-            }
-            update_counter += 1
-            if track_data != last_data or update_counter >= 3:
-                if track_data != last_data:
-                    yield f"data: {json.dumps(track_data)}\n\n"
-                    last_data = track_data
-                update_counter = 0
-            time.sleep(2)
-    return Response(generate(), mimetype='text/event-stream')
-
-@app.route('/api/current_track')
-def api_current_track():
-    current_track = get_current_track()
-    return {
-        'track': current_track,
-        'timestamp': datetime.now().isoformat()
-    }
-
-@app.route('/current_album_art')
-def current_album_art():
-    try:
-        art_path = 'static/current_album_art.jpg'
-        if os.path.exists(art_path):
-            return send_file(art_path, mimetype='image/jpeg')
-        else:
-            from PIL import Image, ImageDraw
-            img = Image.new('RGB', (300, 300), color=(40, 40, 60))
-            draw = ImageDraw.Draw(img)
-            draw.rectangle([10, 10, 290, 290], outline=(100, 100, 150), width=3)
-            draw.text((150, 120), "🎵", fill=(200, 200, 220), anchor="mm")
-            draw.text((150, 180), "No Album Art", fill=(150, 150, 170), anchor="mm")
-            img_io = io.BytesIO()
-            img.save(img_io, 'JPEG', quality=85)
-            img_io.seek(0)
-            return send_file(img_io, mimetype='image/jpeg')
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error serving album art: {e}")
-        try:
-            error_img = Image.new('RGB', (300, 300), color=(60, 40, 40))
-            draw = ImageDraw.Draw(error_img)
-            draw.text((150, 150), "❌ Error", fill=(220, 150, 150), anchor="mm")
-            
-            img_io = io.BytesIO()
-            error_img.save(img_io, 'JPEG')
-            img_io.seek(0)
-            return send_file(img_io, mimetype='image/jpeg')
-        except:
-            return "Album art not available", 404
-
-@app.route('/lyrics/search')
-def search_lyrics():
-    track_name = request.args.get('track_name', '').strip()
-    artist_name = request.args.get('artist_name', '').strip()
-    if not track_name or not artist_name:
-        return {'success': False, 'error': 'Track name and artist name are required'}
-    try:
-        api_url = f"https://lrclib.net/api/search"
-        params = {'track_name': track_name,'artist_name': artist_name}
-        response = requests.get(api_url, params=params, timeout=10)
-        if response.status_code == 200:
-            results = response.json()
-            if results:
-                first_result = results[0]
-                lyrics_id = first_result.get('id')
-                if lyrics_id:
-                    lyrics_response = requests.get(f"https://lrclib.net/api/get/{lyrics_id}", timeout=10)
-                    if lyrics_response.status_code == 200:
-                        lyrics_data = lyrics_response.json()
-                        return {'success': True,'lyrics': lyrics_data.get('syncedLyrics', ''),'plain_lyrics': lyrics_data.get('plainLyrics', ''),'track_name': lyrics_data.get('trackName', track_name),'artist_name': lyrics_data.get('artistName', artist_name),'album_name': lyrics_data.get('albumName', ''),'duration': lyrics_data.get('duration', 0)}
-            return {'success': False, 'error': 'No lyrics found for this track'}
-        else:
-            return {'success': False, 'error': f'API returned status code {response.status_code}'}
-    except requests.RequestException as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Lyrics search error: {e}")
-        return {'success': False, 'error': f'Network error: {str(e)}'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Lyrics search unexpected error: {e}")
-        return {'success': False, 'error': f'Unexpected error: {str(e)}'}
-
-@app.route('/lyrics/current')
-def get_current_track_lyrics():
-    try:
-        current_track = get_current_track()
-        if not current_track.get('has_track') or current_track.get('song') in ['No track playing', 'Error loading track']:
-            return {'success': False, 'error': 'No track currently playing'}
-        track_name = current_track['song']
-        artist_name = current_track['artist']
-        if '(' in artist_name:
-            artist_name = artist_name.split('(')[0].strip()
-        result = search_lyrics_for_track(track_name, artist_name)
-        return result
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Current track lyrics error: {e}")
-        return {'success': False, 'error': f'Error getting current track lyrics: {str(e)}'}
-
-@app.route('/spotify_play', methods=['POST'])
-@rate_limit(0.5)
-def spotify_play():
-    if not check_internet_connection(timeout=3):
-        return {'success': False, 'error': 'No internet connection'}
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.start_playback()
-        return {'success': True, 'message': 'Playback started'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Play error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_pause', methods=['POST'])
-@rate_limit(0.5)
-def spotify_pause():
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.pause_playback()
-        return {'success': True, 'message': 'Playback paused'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Pause error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_next', methods=['POST'])
-@rate_limit(0.5)
-def spotify_next():
-    if not check_internet_connection(timeout=3):
-        return {'success': False, 'error': 'No internet connection'}
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.next_track()
-        return {'success': True, 'message': 'Skipped to next track'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Next track error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_previous', methods=['POST'])
-@rate_limit(0.5)
-def spotify_previous():
-    if not check_internet_connection(timeout=3):
-        return {'success': False, 'error': 'No internet connection'}
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.previous_track()
-        return {'success': True, 'message': 'Went to previous track'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Previous track error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_get_volume', methods=['GET'])
-def spotify_get_volume():
-    try:
-        if os.path.exists('.current_track_state.toml'):
-            state_data = toml.load('.current_track_state.toml')
-            track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 5:
-                cached_volume = track_data.get('volume_percent', 50)
-                return {'success': True, 'volume': cached_volume, 'cached': True}
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        if not check_internet_connection(timeout=3):
-            return {'success': False, 'error': 'No internet connection'}
-        playback = sp.current_playback()
-        if playback and 'device' in playback:
-            current_volume = playback['device'].get('volume_percent', 50)
-            return {'success': True, 'volume': current_volume, 'cached': False}
-        else:
-            return {'success': True, 'volume': 50, 'cached': False}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Get volume error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_volume', methods=['POST'])
-@rate_limit(0.5)
-def spotify_volume():
-    if not check_internet_connection(timeout=3):
-        return {'success': False, 'error': 'No internet connection'}
-    try:
-        volume = request.json.get('volume', 50)
-        volume = max(0, min(100, volume))
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.volume(volume)
-        return {'success': True, 'message': f'Volume set to {volume}%'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Volume set error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_seek', methods=['POST'])
-@rate_limit(0.5)
-def spotify_seek():
-    try:
-        position_ms = request.json.get('position_ms', 0)
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        playback = sp.current_playback()
-        if not playback or not playback.get('is_playing', False):
-            return {'success': False, 'error': 'No active playback'}
-        sp.seek_track(position_ms)
-        return {'success': True, 'message': 'Playback position set'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Seek error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_search', methods=['POST'])
-@rate_limit(1.0)
-def spotify_search():
-    try:
-        query = request.json.get('query', '').strip()
-        if not query:
-            return {'success': False, 'error': 'No search query provided'}
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        results = sp.search(q=query, type='track', limit=20)
-        tracks = []
-        for item in results['tracks']['items']:
-            image_url = None
-            if item['album']['images']:
-                image_url = item['album']['images'][-1]['url'] if item['album']['images'] else None
-            duration_ms = item['duration_ms']
-            duration_min = duration_ms // 60000
-            duration_sec = (duration_ms % 60000) // 1000
-            duration_str = f"{duration_min}:{duration_sec:02d}"
-            artists = ', '.join([artist['name'] for artist in item['artists']])
-            tracks.append({
-                'name': item['name'],
-                'artists': artists,
-                'album': item['album']['name'],
-                'duration': duration_str,
-                'uri': item['uri'],
-                'image_url': image_url
-            })
-        return {'success': True, 'tracks': tracks}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Spotify search error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_add_to_queue', methods=['POST'])
-@rate_limit(0.5)
-def spotify_add_to_queue():
-    try:
-        track_uri = request.json.get('track_uri', '').strip()
-        if not track_uri:
-            return {'success': False, 'error': 'No track URI provided'}
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.add_to_queue(track_uri)
-        return {'success': True, 'message': 'Track added to queue'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Spotify add to queue error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_get_queue', methods=['GET'])
-def spotify_get_queue():
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        playback = sp.current_playback()
-        queue = sp.queue()
-        queue_tracks = []
-        if playback and playback.get('item'):
-            current_track = playback['item']
-            artists = ', '.join([artist['name'] for artist in current_track['artists']])
-            image_url = current_track['album']['images'][-1]['url'] if current_track['album']['images'] else None
-            queue_tracks.append({
-                'name': current_track['name'],
-                'artists': artists,
-                'album': current_track['album']['name'],
-                'uri': current_track['uri'],
-                'image_url': image_url,
-                'is_current': True
-            })
-        if queue and queue.get('queue'):
-            for track in queue['queue']:
-                artists = ', '.join([artist['name'] for artist in track['artists']])
-                image_url = track['album']['images'][-1]['url'] if track['album']['images'] else None
-                queue_tracks.append({
-                    'name': track['name'],
-                    'artists': artists,
-                    'album': track['album']['name'],
-                    'uri': track['uri'],
-                    'image_url': image_url,
-                    'is_current': False
-                })
-        return {'success': True, 'queue': queue_tracks}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Spotify get queue error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_toggle_shuffle', methods=['POST'])
-@rate_limit(0.5)
-def spotify_toggle_shuffle():
-    logger = logging.getLogger('Launcher')
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return jsonify({'success': False, 'error': message})
-        current_state = sp.current_playback()
-        if not current_state:
-            return jsonify({'success': False, 'error': 'No active Spotify device found.'})
-        current_shuffle_state = current_state.get('shuffle_state', False)
-        requested_state = request.json.get('state', not current_shuffle_state)
-        if current_shuffle_state != requested_state:
-            sp.shuffle(requested_state)
-        time.sleep(1)
-        updated_state = sp.current_playback()
-        actual_new_state = updated_state.get('shuffle_state', False) if updated_state else False
-        action = "Shuffle Enabled" if actual_new_state else "Shuffle Disabled"
-        logger.info(f"🔀 {action}")
-        return jsonify({
-            'success': True, 
-            'message': action,
-            'new_state': actual_new_state
-        })
-    except Exception as e:
-        error_message = f"Spotify shuffle error: {str(e)}"
-        logger.error(error_message)
-        return jsonify({'success': False, 'error': error_message})
-
-@app.route('/spotify_get_shuffle_state', methods=['GET'])
-def spotify_get_shuffle_state():
-    try:
-        if os.path.exists('.current_track_state.toml'):
-            state_data = toml.load('.current_track_state.toml')
-            track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            
-            if time.time() - timestamp < 5:
-                is_shuffling = track_data.get('shuffle_state', False)
-                return jsonify({'is_shuffling': is_shuffling, 'cached': True})
-        sp, message = get_spotify_client()
-        if not sp:
-            return jsonify({'is_shuffling': False, 'error': message})
-        current_state = sp.current_playback()
-        if current_state and 'shuffle_state' in current_state:
-            is_shuffling = current_state.get('shuffle_state', False)
-            return jsonify({'is_shuffling': is_shuffling, 'cached': False})
-        else:
-            return jsonify({'is_shuffling': False, 'cached': False})
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error getting shuffle state: {e}")
-        return jsonify({'is_shuffling': False})
-
-@app.route('/spotify_shuffle_queue', methods=['POST'])
-@rate_limit(0.5)
-def spotify_shuffle_queue():
-    logger = logging.getLogger('Launcher')
-    try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return jsonify({'success': False, 'error': message})
-        current_state = sp.current_playback()
-        shuffle_state = not current_state.get('shuffle_state', False) if current_state else True
-        sp.shuffle(shuffle_state)
-        action = "Enabled shuffle" if shuffle_state else "Disabled shuffle"
-        logger.info(f"🔀 {action}")
-        return jsonify({'success': True, 'message': f'{action} for playback.'})
-    except Exception as e:
-        error_message = f"Spotify shuffle error: {str(e)}"
-        logger.error(error_message)
-        return jsonify({'success': False, 'error': error_message})
-
-@app.route('/spotify_play_playlist', methods=['POST'])
-@rate_limit(0.5)
-def spotify_play_context():
-    logger = logging.getLogger('Launcher')
-    try:
-        context_uri = request.json.get('uri')
-        name = request.json.get('name', 'Unknown Context')
-        sp, message = get_spotify_client()
-        if not sp:
-            flash(message, 'error')
-            return jsonify({'success': False, 'error': message})
-        sp.start_playback(context_uri=context_uri)
-        logger.info(f"▶ Started playback of context: {name} ({context_uri})")
-        flash(f'Playing: {name}', 'success')
-        return jsonify({'success': True, 'message': f'Started playing {name}'})
-    except Exception as e:
-        error_message = f"Spotify play context error: {str(e)}"
-        logger.error(error_message)
-        flash(f'Error playing playlist/context: {str(e)}', 'error')
-        return jsonify({'success': False, 'error': error_message})
-
-@app.route('/spotify_play_track', methods=['POST'])
-@rate_limit(0.5)
-def spotify_play_track():
-    try:
-        track_uri = request.json.get('track_uri', '').strip()
-        if not track_uri:
-            return {'success': False, 'error': 'No track URI provided'}
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        sp.start_playback(uris=[track_uri])
-        return {'success': True, 'message': 'Track started'}
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Spotify play track error: {str(e)}")
-        return {'success': False, 'error': str(e)}
-
-@app.route('/spotify_search_playlist', methods=['POST'])
-@rate_limit(1.0)
-def spotify_search_playlist():
-    logger = logging.getLogger('Launcher')
-    try:
-        query = request.json.get('query', '').strip()
-        if not query:
-            return jsonify({'success': False, 'error': 'No search query provided'})
-        sp, message = get_spotify_client()
-        if not sp:
-            return jsonify({'success': False, 'error': message})
-        results = sp.search(q=query, type='playlist', limit=20)
-        playlists = []
-        if results and 'playlists' in results and results['playlists']['items']:
-            for item in results['playlists']['items']:
-                if not item: continue
-                image_url = None
-                if item['images']:
-                    image_url = item['images'][0]['url']
-                playlists.append({
-                    'name': item['name'],
-                    'owner': item['owner']['display_name'],
-                    'tracks_total': item['tracks']['total'],
-                    'uri': item['uri'],
-                    'image_url': image_url
-                })
-        return jsonify({'success': True, 'playlists': playlists})
-    except Exception as e:
-        logger.error(f"Spotify playlist search error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/search_results')
-def search_results():
-    config = load_config()
-    ui_config = config.get("ui", {"theme": "dark"})
-    query = request.args.get('query', '')
-    tracks_json = request.args.get('tracks', '[]')
-    try:
-        tracks = json.loads(tracks_json)
-    except:
-        tracks = []
-    playlists_json = request.args.get('playlists', '[]')
-    try:
-        playlists = json.loads(playlists_json)
-    except:
-        playlists = []
-    return render_template('search_results.html', 
-                        query=query, 
-                        tracks=tracks,
-                        playlists=playlists,
-                        ui_config=ui_config)
-
-@app.route('/clear_song_logs', methods=['POST'])
-def clear_song_logs():
-    try:
-        functions_with_conn = [update_song_count, load_song_counts, generate_music_stats]
-        for func in functions_with_conn:
-            if hasattr(func, 'db_conn'):
-                cursor = func.db_conn.cursor()
-                cursor.execute('DELETE FROM song_plays')
-                cursor.execute('VACUUM')
-                func.db_conn.commit()
-        return 'Song logs cleared', 200
-    except Exception as e:
-        return f'Error clearing song logs: {str(e)}', 500
-
-@app.route('/advanced_config')
-def advanced_config():
-    config = load_config()
-    ui_config = config.get("ui", DEFAULT_CONFIG["ui"])
-    available_css = get_available_css_files()
-    if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
-        ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
-        
-    return render_template(
-        'advanced_config.html',
-        config=config,
-        ui_config=ui_config,
-        available_css=available_css
-    )
 
 @app.route('/save_advanced_config', methods=['POST'])
 def save_advanced_config():
@@ -1508,32 +294,7 @@ def save_advanced_config():
         config["clock"]["type"] = request.form.get('clock_type', 'digital')
         save_config(config)
         flash('success', 'Advanced configuration saved successfully!')
-        def restart_process(process_name, stop_func, start_func, check_func):
-            max_wait_time = 10
-            wait_interval = 0.5
-            if check_func():
-                success, message = stop_func()
-                if not success:
-                    flash('warning', f'Warning stopping {process_name}: {message}')
-            start_time = time.time()
-            while check_func() and (time.time() - start_time) < max_wait_time:
-                time.sleep(wait_interval)
-            if check_func():
-                flash('warning', f'{process_name} did not stop gracefully, forcing restart')
-                if process_name.lower() == 'hud':
-                    subprocess.run(['pkill', '-f', 'hud.py'], check=False)
-                else:
-                    subprocess.run(['pkill', '-f', 'neonwifi.py'], check=False)
-                time.sleep(2)
-            success, message = start_func()
-            if not success:
-                flash('error', f'Error starting {process_name}: {message}')
-        was_hud_running = is_hud_running()
-        if was_hud_running:
-            restart_process('HUD', stop_hud, start_hud, is_hud_running)
-        was_neonwifi_running = is_neonwifi_running()
-        if was_neonwifi_running:
-            restart_process('neonwifi', stop_neonwifi, start_neonwifi, is_neonwifi_running)
+        restart_processes_after_config()
     except Exception as e:
         flash('error', f'Error saving configuration: {str(e)}')
     return redirect(url_for('advanced_config'))
@@ -1557,6 +318,784 @@ def reset_advanced_config():
     flash('success', 'Advanced configuration reset to defaults!')
     return redirect(url_for('advanced_config'))
 
+@app.route('/toggle_theme', methods=['POST'])
+def toggle_theme():
+    config = load_config()
+    new_theme = request.form.get('theme', 'dark')
+    if 'ui' not in config:
+        config['ui'] = {}
+    config['ui']['theme'] = new_theme
+    save_config(config)
+    return redirect(request.referrer or url_for('index'))
+
+# ============== APPLICATION CONTROL ROUTES ==============
+
+@app.route('/start_hud', methods=['POST'])
+def start_hud_route():
+    success, message = start_hud()
+    if success:
+        flash('success', message)
+    else:
+        flash('error', message)
+    return redirect(url_for('index'))
+
+@app.route('/start_neonwifi', methods=['POST'])
+def start_neonwifi_route():
+    success, message = start_neonwifi()
+    if success:
+        flash('success', message)
+    else:
+        flash('error', message)
+    return redirect(url_for('index'))
+
+@app.route('/stop_hud', methods=['POST'])
+def stop_hud_route():
+    success, message = stop_hud()
+    if success:
+        flash('success', message)
+    else:
+        flash('error', message)
+    return redirect(url_for('index'))
+
+@app.route('/stop_neonwifi', methods=['POST'])
+def stop_neonwifi_route():
+    success, message = stop_neonwifi()
+    if success:
+        flash('success', message)
+    else:
+        flash('error', message)
+    return redirect(url_for('index'))
+
+# ============== SPOTIFY AUTHENTICATION ROUTES ==============
+
+@app.route('/spotify_auth')
+def spotify_auth_page():
+    config = load_config()
+    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
+        flash('error', 'Please save Spotify Client ID and Secret first.')
+        return redirect(url_for('index'))
+    try:
+        sp_oauth = SpotifyOAuth(
+            client_id=config["api_keys"]["client_id"],
+            client_secret=config["api_keys"]["client_secret"],
+            redirect_uri=config["api_keys"]["redirect_uri"],
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            cache_path=".spotify_cache",
+            show_dialog=True
+        )
+        auth_url = sp_oauth.get_authorize_url()
+        return render_template('spotify_auth.html', auth_url=auth_url)
+    except Exception as e:
+        flash('error', f'Spotify authentication error: {str(e)}')
+        return redirect(url_for('index'))
+
+@app.route('/process_callback_url', methods=['POST'])
+def process_callback_url():
+    config = load_config()
+    callback_url = request.form.get('callback_url', '').strip()
+    if not callback_url:
+        flash('error', 'Please paste the callback URL')
+        return redirect(url_for('spotify_auth_page'))
+    try:
+        parsed_url = urllib.parse.urlparse(callback_url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        if 'error' in query_params:
+            error = query_params['error'][0]
+            flash('error', f'Spotify authentication failed: {error}')
+            return redirect(url_for('index'))
+        if 'code' not in query_params:
+            flash('error', 'No authorization code found in the URL.')
+            return redirect(url_for('spotify_auth_page'))
+        code = query_params['code'][0]
+        sp_oauth = SpotifyOAuth(
+            client_id=config["api_keys"]["client_id"],
+            client_secret=config["api_keys"]["client_secret"],
+            redirect_uri=config["api_keys"]["redirect_uri"],
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            cache_path=".spotify_cache"
+        )
+        token_info = sp_oauth.get_access_token(code)
+        if token_info:
+            flash('success', 'Spotify authentication successful!')
+        else:
+            flash('error', 'Spotify authentication failed.')
+    except Exception as e:
+        flash('error', f'Authentication error: {str(e)}')
+        if os.path.exists(".spotify_cache"):
+            os.remove(".spotify_cache")
+    return redirect(url_for('index'))
+
+# ============== SPOTIFY CONTROL ROUTES ==============
+
+@app.route('/spotify_next', methods=['POST'])
+@rate_limit(0.5)
+def spotify_next():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.next_track()
+        return {'success': True, 'message': 'Skipped to next track'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Next track error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_pause', methods=['POST'])
+@rate_limit(0.5)
+def spotify_pause():
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.pause_playback()
+        return {'success': True, 'message': 'Playback paused'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Pause error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_play', methods=['POST'])
+@rate_limit(0.5)
+def spotify_play():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.start_playback()
+        return {'success': True, 'message': 'Playback started'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Play error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_play_playlist', methods=['POST'])
+@rate_limit(0.5)
+def spotify_play_context():
+    logger = logging.getLogger('Launcher')
+    try:
+        context_uri = request.json.get('uri')
+        name = request.json.get('name', 'Unknown Context')
+        sp, message = get_spotify_client()
+        if not sp:
+            flash(message, 'error')
+            return jsonify({'success': False, 'error': message})
+        sp.start_playback(context_uri=context_uri)
+        logger.info(f"▶ Started playback of context: {name} ({context_uri})")
+        flash(f'Playing: {name}', 'success')
+        return jsonify({'success': True, 'message': f'Started playing {name}'})
+    except Exception as e:
+        error_message = f"Spotify play context error: {str(e)}"
+        logger.error(error_message)
+        flash(f'Error playing playlist/context: {str(e)}', 'error')
+        return jsonify({'success': False, 'error': error_message})
+
+@app.route('/spotify_play_track', methods=['POST'])
+@rate_limit(0.5)
+def spotify_play_track():
+    try:
+        track_uri = request.json.get('track_uri', '').strip()
+        if not track_uri:
+            return {'success': False, 'error': 'No track URI provided'}
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.start_playback(uris=[track_uri])
+        return {'success': True, 'message': 'Track started'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Spotify play track error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_previous', methods=['POST'])
+@rate_limit(0.5)
+def spotify_previous():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.previous_track()
+        return {'success': True, 'message': 'Went to previous track'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Previous track error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_seek', methods=['POST'])
+@rate_limit(0.5)
+def spotify_seek():
+    try:
+        position_ms = request.json.get('position_ms', 0)
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        playback = sp.current_playback()
+        if not playback or not playback.get('is_playing', False):
+            return {'success': False, 'error': 'No active playback'}
+        sp.seek_track(position_ms)
+        return {'success': True, 'message': 'Playback position set'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Seek error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_shuffle_queue', methods=['POST'])
+@rate_limit(0.5)
+def spotify_shuffle_queue():
+    logger = logging.getLogger('Launcher')
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        current_state = sp.current_playback()
+        shuffle_state = not current_state.get('shuffle_state', False) if current_state else True
+        sp.shuffle(shuffle_state)
+        action = "Enabled shuffle" if shuffle_state else "Disabled shuffle"
+        logger.info(f"🔀 {action}")
+        return jsonify({'success': True, 'message': f'{action} for playback.'})
+    except Exception as e:
+        error_message = f"Spotify shuffle error: {str(e)}"
+        logger.error(error_message)
+        return jsonify({'success': False, 'error': error_message})
+
+@app.route('/spotify_toggle_shuffle', methods=['POST'])
+@rate_limit(0.5)
+def spotify_toggle_shuffle():
+    logger = logging.getLogger('Launcher')
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        current_state = sp.current_playback()
+        if not current_state:
+            return jsonify({'success': False, 'error': 'No active Spotify device found.'})
+        current_shuffle_state = current_state.get('shuffle_state', False)
+        requested_state = request.json.get('state', not current_shuffle_state)
+        if current_shuffle_state != requested_state:
+            sp.shuffle(requested_state)
+        time.sleep(1)
+        updated_state = sp.current_playback()
+        actual_new_state = updated_state.get('shuffle_state', False) if updated_state else False
+        action = "Shuffle Enabled" if actual_new_state else "Shuffle Disabled"
+        logger.info(f"🔀 {action}")
+        return jsonify({
+            'success': True, 
+            'message': action,
+            'new_state': actual_new_state
+        })
+    except Exception as e:
+        error_message = f"Spotify shuffle error: {str(e)}"
+        logger.error(error_message)
+        return jsonify({'success': False, 'error': error_message})
+
+@app.route('/spotify_volume', methods=['POST'])
+@rate_limit(0.5)
+def spotify_volume():
+    if not check_internet_connection(timeout=3):
+        return {'success': False, 'error': 'No internet connection'}
+    try:
+        volume = request.json.get('volume', 50)
+        volume = max(0, min(100, volume))
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.volume(volume)
+        return {'success': True, 'message': f'Volume set to {volume}%'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Volume set error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+# ============== SPOTIFY DATA ROUTES ==============
+
+@app.route('/spotify_add_to_queue', methods=['POST'])
+@rate_limit(0.5)
+def spotify_add_to_queue():
+    try:
+        track_uri = request.json.get('track_uri', '').strip()
+        if not track_uri:
+            return {'success': False, 'error': 'No track URI provided'}
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        sp.add_to_queue(track_uri)
+        return {'success': True, 'message': 'Track added to queue'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Spotify add to queue error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_device_status', methods=['GET'])
+def spotify_device_status():
+    try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 5:
+                has_device = track_data.get('device_active', False)
+                device_name = track_data.get('device_name', '')
+                return {
+                    'success': True,
+                    'has_active_device': has_device,
+                    'device_name': device_name if has_device else None,
+                    'cached': True
+                }
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'has_active_device': False, 'error': message}
+        playback = sp.current_playback()
+        has_active_device = playback is not None and playback.get('device') is not None
+        return {
+            'success': True,
+            'has_active_device': has_active_device,
+            'device_name': playback['device']['name'] if has_active_device else None,
+            'cached': False
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error checking device status: {e}")
+        return {'success': False, 'has_active_device': False, 'error': str(e)}
+
+@app.route('/spotify_get_queue', methods=['GET'])
+def spotify_get_queue():
+    try:
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        playback = sp.current_playback()
+        queue = sp.queue()
+        queue_tracks = []
+        if playback and playback.get('item'):
+            current_track = playback['item']
+            artists = ', '.join([artist['name'] for artist in current_track['artists']])
+            image_url = current_track['album']['images'][-1]['url'] if current_track['album']['images'] else None
+            queue_tracks.append({
+                'name': current_track['name'],
+                'artists': artists,
+                'album': current_track['album']['name'],
+                'uri': current_track['uri'],
+                'image_url': image_url,
+                'is_current': True
+            })
+        if queue and queue.get('queue'):
+            for track in queue['queue']:
+                artists = ', '.join([artist['name'] for artist in track['artists']])
+                image_url = track['album']['images'][-1]['url'] if track['album']['images'] else None
+                queue_tracks.append({
+                    'name': track['name'],
+                    'artists': artists,
+                    'album': track['album']['name'],
+                    'uri': track['uri'],
+                    'image_url': image_url,
+                    'is_current': False
+                })
+        return {'success': True, 'queue': queue_tracks}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Spotify get queue error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_get_shuffle_state', methods=['GET'])
+def spotify_get_shuffle_state():
+    try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 5:
+                is_shuffling = track_data.get('shuffle_state', False)
+                return jsonify({'is_shuffling': is_shuffling, 'cached': True})
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'is_shuffling': False, 'error': message})
+        current_state = sp.current_playback()
+        if current_state and 'shuffle_state' in current_state:
+            is_shuffling = current_state.get('shuffle_state', False)
+            return jsonify({'is_shuffling': is_shuffling, 'cached': False})
+        else:
+            return jsonify({'is_shuffling': False, 'cached': False})
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting shuffle state: {e}")
+        return jsonify({'is_shuffling': False})
+
+@app.route('/spotify_get_volume', methods=['GET'])
+def spotify_get_volume():
+    try:
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 5:
+                cached_volume = track_data.get('volume_percent', 50)
+                return {'success': True, 'volume': cached_volume, 'cached': True}
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        if not check_internet_connection(timeout=3):
+            return {'success': False, 'error': 'No internet connection'}
+        playback = sp.current_playback()
+        if playback and 'device' in playback:
+            current_volume = playback['device'].get('volume_percent', 50)
+            return {'success': True, 'volume': current_volume, 'cached': False}
+        else:
+            return {'success': True, 'volume': 50, 'cached': False}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Get volume error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_search', methods=['POST'])
+@rate_limit(1.0)
+def spotify_search():
+    try:
+        query = request.json.get('query', '').strip()
+        if not query:
+            return {'success': False, 'error': 'No search query provided'}
+        sp, message = get_spotify_client()
+        if not sp:
+            return {'success': False, 'error': message}
+        results = sp.search(q=query, type='track', limit=20)
+        tracks = []
+        for item in results['tracks']['items']:
+            image_url = None
+            if item['album']['images']:
+                image_url = item['album']['images'][-1]['url'] if item['album']['images'] else None
+            duration_ms = item['duration_ms']
+            duration_min = duration_ms // 60000
+            duration_sec = (duration_ms % 60000) // 1000
+            duration_str = f"{duration_min}:{duration_sec:02d}"
+            artists = ', '.join([artist['name'] for artist in item['artists']])
+            tracks.append({
+                'name': item['name'],
+                'artists': artists,
+                'album': item['album']['name'],
+                'duration': duration_str,
+                'uri': item['uri'],
+                'image_url': image_url
+            })
+        return {'success': True, 'tracks': tracks}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Spotify search error: {str(e)}")
+        return {'success': False, 'error': str(e)}
+
+@app.route('/spotify_search_playlist', methods=['POST'])
+@rate_limit(1.0)
+def spotify_search_playlist():
+    logger = logging.getLogger('Launcher')
+    try:
+        query = request.json.get('query', '').strip()
+        if not query:
+            return jsonify({'success': False, 'error': 'No search query provided'})
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        results = sp.search(q=query, type='playlist', limit=20)
+        playlists = []
+        if results and 'playlists' in results and results['playlists']['items']:
+            for item in results['playlists']['items']:
+                if not item: continue
+                image_url = None
+                if item['images']:
+                    image_url = item['images'][0]['url']
+                playlists.append({
+                    'name': item['name'],
+                    'owner': item['owner']['display_name'],
+                    'tracks_total': item['tracks']['total'],
+                    'uri': item['uri'],
+                    'image_url': image_url
+                })
+        return jsonify({'success': True, 'playlists': playlists})
+    except Exception as e:
+        logger.error(f"Spotify playlist search error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+# ============== WEATHER AND DATA ROUTES ==============
+
+@app.route('/api/current_weather')
+def api_current_weather():
+    try:
+        weather_file = '.weather_state.toml'
+        if os.path.exists(weather_file):
+            state_data = toml.load(weather_file)
+            weather_data = state_data.get('weather', {})
+            timestamp = weather_data.get('timestamp', 0)
+            if time.time() - timestamp < 7200:
+                return {
+                    'success': True,
+                    'weather': weather_data,
+                    'timestamp': datetime.now().isoformat()
+                }
+        return {
+            'success': True,
+            'weather': {
+                'city': 'Weather data loading...',
+                'temp': 0,
+                'description': 'Please wait',
+                'icon_id': '',
+                'timestamp': time.time()
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting weather data: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
+
+@app.route('/api/current_track')
+def api_current_track():
+    current_track = get_current_track()
+    return {
+        'track': current_track,
+        'timestamp': datetime.now().isoformat()
+    }
+
+# ============== LOG AND STATS ROUTES ==============
+
+@app.route('/clear_logs', methods=['POST'])
+def clear_logs():
+    log_file = 'neondisplay.log'
+    try:
+        backup_folder = "backuplogs"
+        clear_option = request.form.get('clear_option', 'current')
+        if clear_option == 'all':
+            backups_cleared = 0
+            for i in range(1, 100):
+                backup_file = os.path.join(backup_folder, f"neondisplay.log.{i}")
+                if os.path.exists(backup_file):
+                    os.remove(backup_file)
+                    backups_cleared += 1
+                else:
+                    break
+            message = f'Backup logs cleared ({backups_cleared} files removed)'
+        else:
+            with open(log_file, 'w') as f:
+                f.write(f"Logs cleared at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            message = 'Current log cleared'
+        return message, 200
+    except Exception as e:
+        return f'Error clearing logs: {str(e)}', 500
+
+@app.route('/clear_song_logs', methods=['POST'])
+def clear_song_logs():
+    try:
+        functions_with_conn = [update_song_count, load_song_counts, generate_music_stats]
+        for func in functions_with_conn:
+            if hasattr(func, 'db_conn'):
+                cursor = func.db_conn.cursor()
+                cursor.execute('DELETE FROM song_plays')
+                cursor.execute('VACUUM')
+                func.db_conn.commit()
+        return 'Song logs cleared', 200
+    except Exception as e:
+        return f'Error clearing song logs: {str(e)}', 500
+
+@app.route('/music_stats')
+def music_stats():
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
+    try:
+        lines = int(request.args.get('lines', 1000))
+    except:
+        lines = 1000
+    song_stats, artist_stats, total_plays, unique_songs, unique_artists = generate_music_stats(lines)
+    song_chart_data = generate_chart_data(song_stats, 'Songs')
+    artist_chart_data = generate_chart_data(artist_stats, 'Artists')
+    song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
+    artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
+    return render_template('music_stats.html', 
+                        song_chart_items=song_chart_items,
+                        artist_chart_items=artist_chart_items,
+                        lines=lines,
+                        total_plays=total_plays,
+                        unique_songs=unique_songs,
+                        unique_artists=unique_artists,
+                        ui_config=ui_config)
+
+@app.route('/music_stats_data')
+def music_stats_data():
+    try:
+        lines = int(request.args.get('lines', 1000))
+    except:
+        lines = 1000
+    song_stats, artist_stats, total_plays, unique_songs, unique_artists = generate_music_stats(lines)
+    song_chart_data = generate_chart_data(song_stats, 'Songs')
+    artist_chart_data = generate_chart_data(artist_stats, 'Artists')
+    song_chart_items = list(zip(song_chart_data['labels'], song_chart_data['data'], song_chart_data['colors']))
+    artist_chart_items = list(zip(artist_chart_data['labels'], artist_chart_data['data'], artist_chart_data['colors']))
+    return {
+        'song_chart_items': song_chart_items,
+        'artist_chart_items': artist_chart_items,
+        'total_plays': total_plays,
+        'unique_songs': unique_songs,
+        'unique_artists': unique_artists
+    }
+
+@app.route('/view_logs')
+def view_logs():
+    lines = request.args.get('lines', 100, type=int)
+    live = request.args.get('live', False, type=bool)
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
+    current_theme = ui_config.get("theme", "dark")
+
+    backup_folder = "backuplogs"
+    log_file = os.path.join(backup_folder, 'neondisplay.log')
+    backup_count = count_backup_logs()
+    
+    if not os.path.exists(log_file):
+        log_content = "Log file does not exist. It will be created when there are log messages.\n\n"
+        log_content += f"Log file path: {os.path.abspath(log_file)}"
+        if live:
+            return log_content
+        return render_template('logs.html',
+            log_content=log_content,
+            lines=lines,
+            current_theme=current_theme,
+            ui_config=ui_config,
+            backup_count=backup_count
+        )
+    try:
+        with open(log_file, 'r') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if lines > 0 else all_lines
+            log_content = ''.join(recent_lines)
+        if not log_content.strip():
+            log_content = "Log file exists but is empty. No log messages yet."
+    except Exception as e:
+        log_content = f"Error reading log file: {str(e)}\n\n"
+        log_content += f"Log file path: {os.path.abspath(log_file)}"
+    if live:
+        return log_content
+    return render_template('logs.html',
+        log_content=log_content,
+        lines=lines,
+        current_theme=current_theme,
+        ui_config=ui_config,
+        backup_count=backup_count
+    )
+
+# ============== LYRICS ROUTES ==============
+
+@app.route('/lyrics/current')
+def get_current_track_lyrics():
+    try:
+        current_track = get_current_track()
+        if not current_track.get('has_track') or current_track.get('song') in ['No track playing', 'Error loading track']:
+            return {'success': False, 'error': 'No track currently playing'}
+        track_name = current_track['song']
+        artist_name = current_track['artist']
+        if '(' in artist_name:
+            artist_name = artist_name.split('(')[0].strip()
+        result = search_lyrics_for_track(track_name, artist_name)
+        return result
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Current track lyrics error: {e}")
+        return {'success': False, 'error': f'Error getting current track lyrics: {str(e)}'}
+
+@app.route('/lyrics/search')
+def search_lyrics():
+    track_name = request.args.get('track_name', '').strip()
+    artist_name = request.args.get('artist_name', '').strip()
+    if not track_name or not artist_name:
+        return {'success': False, 'error': 'Track name and artist name are required'}
+    try:
+        api_url = f"https://lrclib.net/api/search"
+        params = {'track_name': track_name,'artist_name': artist_name}
+        response = requests.get(api_url, params=params, timeout=10)
+        if response.status_code == 200:
+            results = response.json()
+            if results:
+                first_result = results[0]
+                lyrics_id = first_result.get('id')
+                if lyrics_id:
+                    lyrics_response = requests.get(f"https://lrclib.net/api/get/{lyrics_id}", timeout=10)
+                    if lyrics_response.status_code == 200:
+                        lyrics_data = lyrics_response.json()
+                        return {'success': True,'lyrics': lyrics_data.get('syncedLyrics', ''),'plain_lyrics': lyrics_data.get('plainLyrics', ''),'track_name': lyrics_data.get('trackName', track_name),'artist_name': lyrics_data.get('artistName', artist_name),'album_name': lyrics_data.get('albumName', ''),'duration': lyrics_data.get('duration', 0)}
+            return {'success': False, 'error': 'No lyrics found for this track'}
+        else:
+            return {'success': False, 'error': f'API returned status code {response.status_code}'}
+    except requests.RequestException as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Lyrics search error: {e}")
+        return {'success': False, 'error': f'Network error: {str(e)}'}
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Lyrics search unexpected error: {e}")
+        return {'success': False, 'error': f'Unexpected error: {str(e)}'}
+
+# ============== MISCELLANEOUS ROUTES ==============
+
+@app.context_processor
+def utility_processor():
+    return dict(zip=zip)
+
+@app.route('/current_album_art')
+def current_album_art():
+    try:
+        art_path = 'static/current_album_art.jpg'
+        if os.path.exists(art_path):
+            return send_file(art_path, mimetype='image/jpeg')
+        else:
+            from PIL import Image, ImageDraw
+            img = Image.new('RGB', (300, 300), color=(40, 40, 60))
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([10, 10, 290, 290], outline=(100, 100, 150), width=3)
+            draw.text((150, 120), "🎵", fill=(200, 200, 220), anchor="mm")
+            draw.text((150, 180), "No Album Art", fill=(150, 150, 170), anchor="mm")
+            img_io = io.BytesIO()
+            img.save(img_io, 'JPEG', quality=85)
+            img_io.seek(0)
+            return send_file(img_io, mimetype='image/jpeg')
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error serving album art: {e}")
+        try:
+            error_img = Image.new('RGB', (300, 300), color=(60, 40, 40))
+            draw = ImageDraw.Draw(error_img)
+            draw.text((150, 150), "❌ Error", fill=(220, 150, 150), anchor="mm")
+            img_io = io.BytesIO()
+            error_img.save(img_io, 'JPEG')
+            img_io.seek(0)
+            return send_file(img_io, mimetype='image/jpeg')
+        except:
+            return "Album art not available", 404
+
+@app.route('/search_results')
+def search_results():
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
+    query = request.args.get('query', '')
+    tracks_json = request.args.get('tracks', '[]')
+    try:
+        tracks = json.loads(tracks_json)
+    except:
+        tracks = []
+    playlists_json = request.args.get('playlists', '[]')
+    try:
+        playlists = json.loads(playlists_json)
+    except:
+        playlists = []
+    return render_template('search_results.html', 
+                        query=query, 
+                        tracks=tracks,
+                        playlists=playlists,
+                        ui_config=ui_config)
+
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
     """Endpoint to gracefully shutdown the server"""
@@ -1567,6 +1106,569 @@ def shutdown():
         raise RuntimeError('Not running with the Werkzeug Server')
     shutdown_func()
     return 'Server shutting down...'
+
+@app.route('/status/hud')
+def status_hud():
+    return {'running': is_hud_running()}
+
+@app.route('/status/neonwifi')
+def status_neonwifi():
+    return {'running': is_neonwifi_running()}
+
+@app.route('/stream/current_track')
+def stream_current_track():
+    def generate():
+        last_data = None
+        update_counter = 0
+        while True:
+            current_track = get_current_track()
+            track_data = {
+                'song': current_track['song'],
+                'artist': current_track['artist'],
+                'album': current_track['album'],
+                'progress': current_track['progress'],
+                'duration': current_track['duration'],
+                'is_playing': current_track['is_playing'],
+                'has_track': current_track['has_track'],
+                'timestamp': datetime.now().isoformat()
+            }
+            update_counter += 1
+            if track_data != last_data or update_counter >= 3:
+                if track_data != last_data:
+                    yield f"data: {json.dumps(track_data)}\n\n"
+                    last_data = track_data
+                update_counter = 0
+            time.sleep(2)
+    return Response(generate(), mimetype='text/event-stream')
+
+# ============== CONFIGURATION FUNCTIONS ==============
+
+def get_available_css_files():
+    static_dir = app.static_folder 
+    if not os.path.isdir(static_dir):
+        return ["colors.css"] 
+    css_files = [f for f in os.listdir(static_dir) if f.endswith('.css')]
+    if not css_files:
+        return ["colors.css"] 
+    css_files.sort() 
+    return css_files
+
+def load_config():
+    if not os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'w') as f:
+            toml.dump(DEFAULT_CONFIG, f)
+        return DEFAULT_CONFIG.copy()
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            return toml.load(f)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        print("Using default configuration")
+        return DEFAULT_CONFIG.copy()
+
+def save_config(config):
+    with open(CONFIG_PATH, 'w') as f:
+        toml.dump(config, f)
+
+def is_config_ready():
+    config = load_config()
+    return all([
+        config["api_keys"]["openweather"],
+        config["api_keys"]["client_id"], 
+        config["api_keys"]["client_secret"]
+    ])
+
+# ============== SPOTIFY FUNCTIONS ==============
+
+def check_spotify_auth():
+    config = load_config()
+    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
+        return False, "Missing client credentials"
+    try:
+        if not os.path.exists(".spotify_cache"):
+            return False, "No cached token found"
+        sp_oauth = SpotifyOAuth(
+            client_id=config["api_keys"]["client_id"],
+            client_secret=config["api_keys"]["client_secret"],
+            redirect_uri=config["api_keys"]["redirect_uri"],
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            cache_path=".spotify_cache"
+        )
+        token_info = sp_oauth.get_cached_token()
+        if not token_info:
+            return False, "No valid token found"
+        if sp_oauth.is_token_expired(token_info):
+            logger = logging.getLogger('Launcher')
+            logger.info("Token expired, attempting refresh...")
+            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
+            if not token_info:
+                return False, "Token refresh failed"
+        try:
+            sp = spotipy.Spotify(auth=token_info['access_token'])
+            current_user = sp.current_user()
+            return True, f"Authenticated as {current_user.get('display_name', 'Unknown User')}"
+        except Exception as e:
+            logger = logging.getLogger('Launcher')
+            logger.error(f"Token validation failed: {e}")
+            return False, f"Token validation failed: {str(e)}"
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error checking Spotify auth: {e}")
+        return False, f"Authentication error: {str(e)}"
+
+def get_spotify_client():
+    config = load_config()
+    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
+        return None, "Missing client credentials"
+    try:
+        sp_oauth = SpotifyOAuth(
+            client_id=config["api_keys"]["client_id"],
+            client_secret=config["api_keys"]["client_secret"],
+            redirect_uri=config["api_keys"]["redirect_uri"],
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            cache_path=".spotify_cache"
+        )
+        token_info = sp_oauth.get_cached_token()
+        if not token_info:
+            return None, "No valid token available"
+        if sp_oauth.is_token_expired(token_info):
+            logger = logging.getLogger('Launcher')
+            logger.info("Refreshing expired token...")
+            try:
+                token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
+                if not token_info:
+                    return None, "Failed to refresh token"
+            except Exception as e:
+                logger.error(f"Token refresh error: {e}")
+                return None, f"Token refresh failed: {str(e)}"
+        sp = spotipy.Spotify(auth=token_info['access_token'])
+        return sp, "Success"
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error creating Spotify client: {e}")
+        return None, f"Client creation failed: {str(e)}"
+
+def safe_check_spotify_auth():
+    if not check_internet_connection(timeout=3):
+        return False, "No internet connection"
+    return check_spotify_auth()
+
+# ============== PROCESS MANAGEMENT FUNCTIONS ==============
+
+def is_hud_running():
+    global hud_process
+    if hud_process is not None:
+        if hud_process.poll() is None:
+            result = True
+        else:
+            hud_process = None
+            result = False
+    else:
+        try:
+            result = bool(subprocess.run(['pgrep', '-f', 'hud.py'], 
+                            capture_output=True, text=True).stdout.strip())
+        except Exception:
+            result = False
+    return result
+
+def is_neonwifi_running():
+    global neonwifi_process
+    if neonwifi_process is not None:
+        if neonwifi_process.poll() is None:
+            return True
+        else:
+            neonwifi_process = None
+    try:
+        result = subprocess.run(['pgrep', '-f', 'neonwifi.py'], 
+                            capture_output=True, text=True)
+        return bool(result.stdout.strip())
+    except Exception:
+        return False
+
+def start_hud():
+    global hud_process, last_logged_song
+    logger = logging.getLogger('Launcher')
+    if is_hud_running():
+        return False, "HUD is already running"
+    try:
+        hud_process = subprocess.Popen(
+            [sys.executable, 'hud.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        def log_hud_output():
+            for line in iter(hud_process.stdout.readline, ''):
+                if line.strip():
+                    logger.info(f"[HUD] {line.strip()}")
+                    song_info = parse_song_from_log(line)
+                    if song_info:
+                        update_song_count(song_info)
+        def monitor_current_track_state():
+            while hud_process and hud_process.poll() is None:
+                log_current_track_state()
+                time.sleep(2)
+        output_thread = threading.Thread(target=log_hud_output)
+        output_thread.daemon = True
+        output_thread.start()
+        track_monitor_thread = threading.Thread(target=monitor_current_track_state)
+        track_monitor_thread.daemon = True
+        track_monitor_thread.start()
+        time.sleep(2)
+        if hud_process.poll() is None:
+            return True, "HUD started successfully"
+        else:
+            return False, "HUD failed to start (check neondisplay.log for details)"
+    except Exception as e:
+        logger.error(f"Error starting HUD: {str(e)}")
+        return False, f"Error starting HUD: {str(e)}"
+
+def stop_hud():
+    global hud_process, last_logged_song
+    logger = logging.getLogger('Launcher')
+    if not is_hud_running():
+        return False, "HUD is not running"
+    try:
+        logger.info("Stopping HUD...")
+        hud_process.terminate()
+        try:
+            hud_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            hud_process.kill()
+            hud_process.wait()
+        hud_process = None
+        last_logged_song = None
+        clear_track_state_file()
+        logger.info("HUD stopped successfully")
+        return True, "HUD stopped successfully"
+    except Exception as e:
+        logger.error(f"Error stopping HUD: {str(e)}")
+        return False, f"Error stopping HUD: {str(e)}"
+
+def start_neonwifi():
+    global neonwifi_process
+    logger = logging.getLogger('Launcher')
+    if is_neonwifi_running():
+        return False, "neonwifi is already running"
+    try:
+        neonwifi_process = subprocess.Popen(
+            [sys.executable, 'neonwifi.py'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+        def log_neonwifi_output():
+            for line in iter(neonwifi_process.stdout.readline, ''):
+                if line.strip():
+                    logger.info(f"[neonwifi] {line.strip()}")
+        output_thread = threading.Thread(target=log_neonwifi_output)
+        output_thread.daemon = True
+        output_thread.start()
+        time.sleep(3)
+        if neonwifi_process.poll() is None:
+            return True, "neonwifi started successfully"
+        else:
+            return False, "neonwifi failed to start (check neondisplay.log for details)"
+    except Exception as e:
+        logger.error(f"Error starting neonwifi: {str(e)}")
+        return False, f"Error starting neonwifi: {str(e)}"
+
+def stop_neonwifi():
+    global neonwifi_process
+    logger = logging.getLogger('Launcher')
+    if not is_neonwifi_running():
+        return False, "neonwifi is not running"
+    try:
+        logger.info("Stopping neonwifi...")
+        if neonwifi_process:
+            neonwifi_process.terminate()
+            try:
+                neonwifi_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                neonwifi_process.kill()
+                neonwifi_process.wait()
+            neonwifi_process = None
+        subprocess.run(['pkill', '-f', 'neonwifi.py'], check=False)
+        time.sleep(2)
+        logger.info("neonwifi stopped successfully")
+        return True, "neonwifi stopped successfully"
+    except Exception as e:
+        logger.error(f"Error stopping neonwifi: {str(e)}")
+        return False, f"Error stopping neonwifi: {str(e)}"
+
+# ============== NETWORK FUNCTIONS ==============
+
+def check_internet_connection(timeout=5):
+    try:
+        response = requests.get("http://www.google.com", timeout=timeout)
+        return response.status_code == 200
+    except requests.RequestException:
+        try:
+            import socket
+            socket.create_connection(("8.8.8.8", 53), timeout=timeout)
+            return True
+        except socket.error:
+            return False
+
+def wait_for_internet(timeout=60, check_interval=5):
+    logger = logging.getLogger('Launcher')
+    logger.info("🔍 Waiting for internet connection...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if check_internet_connection():
+            logger.info("✅ Internet connection established")
+            return True
+        logger.info("⏳ No internet connection, waiting...")
+        time.sleep(check_interval)
+    logger.error("❌ Internet connection timeout")
+    return False
+
+# ============== AUTO-LAUNCH FUNCTIONS ==============
+
+def auto_launch_applications():
+    logger = logging.getLogger('Launcher')
+    config = load_config()
+    auto_config = config.get("auto_start", {})
+    logger.info("🔧 Auto-launching applications based on configuration...")
+    if auto_config.get("check_internet", True):
+        if not wait_for_internet(timeout=30):
+            logger.warning("❌ No internet - starting neonwifi if enabled")
+            if auto_config.get("auto_start_neonwifi", True):
+                start_neonwifi()
+            return
+    if auto_config.get("auto_start_neonwifi", True):
+        start_neonwifi()
+    if auto_config.get("auto_start_hud", True):
+        spotify_authenticated, _ = check_spotify_auth()
+        config_ready = is_config_ready()
+        if config_ready and spotify_authenticated:
+            start_hud()
+            logger.info("✅ HUD auto-started")
+        else:
+            logger.warning("⚠️ HUD not auto-started: configuration incomplete")
+
+def restart_processes_after_config():
+    def restart_process(process_name, stop_func, start_func, check_func):
+        max_wait_time = 10
+        wait_interval = 0.5
+        if check_func():
+            success, message = stop_func()
+            if not success:
+                flash('warning', f'Warning stopping {process_name}: {message}')
+        start_time = time.time()
+        while check_func() and (time.time() - start_time) < max_wait_time:
+            time.sleep(wait_interval)
+        if check_func():
+            flash('warning', f'{process_name} did not stop gracefully, forcing restart')
+            if process_name.lower() == 'hud':
+                subprocess.run(['pkill', '-f', 'hud.py'], check=False)
+            else:
+                subprocess.run(['pkill', '-f', 'neonwifi.py'], check=False)
+            time.sleep(2)
+        success, message = start_func()
+        if not success:
+            flash('error', f'Error starting {process_name}: {message}')
+    was_hud_running = is_hud_running()
+    if was_hud_running:
+        restart_process('HUD', stop_hud, start_hud, is_hud_running)
+    was_neonwifi_running = is_neonwifi_running()
+    if was_neonwifi_running:
+        restart_process('neonwifi', stop_neonwifi, start_neonwifi, is_neonwifi_running)
+
+# ============== LOGGING FUNCTIONS ==============
+
+def setup_logging():
+    logging.getLogger().handlers = []
+    logger = logging.getLogger('Launcher')
+    logger.handlers = []
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    try:
+        config = load_config()
+        log_config = config.get("logging", {})
+        max_lines = log_config.get("max_log_lines", 10000)
+        max_bytes = max_lines * 100  
+        backup_count = log_config.get("max_backup_files", 5)
+        backup_folder = "backuplogs"
+        os.makedirs(backup_folder, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(backup_folder, 'neondisplay.log'),
+            maxBytes=max_bytes, 
+            backupCount=backup_count
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        log_file_path = os.path.join(backup_folder, 'neondisplay.log')
+        if not os.path.exists(log_file_path) or os.path.getsize(log_file_path) == 0:
+            with open(log_file_path, 'a') as f:
+                f.write(f"Log file initialized at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        logger.info("✅ Logging system initialized - console and file handlers active")
+    except Exception as e:
+        print(f"Failed to setup file logging: {e}")
+        logger.error(f"File logging setup failed: {e}")
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.WARNING)
+    if not werkzeug_logger.handlers:
+        console_handler_werkzeug = logging.StreamHandler(sys.stdout)
+        console_handler_werkzeug.setLevel(logging.WARNING)
+        werkzeug_logger.addHandler(console_handler_werkzeug)
+    return logger
+
+def ensure_log_file():
+    backup_folder = "backuplogs"
+    log_file = os.path.join(backup_folder, 'neondisplay.log')
+    try:
+        os.makedirs(backup_folder, exist_ok=True)
+        if not os.path.exists(log_file):
+            with open(log_file, 'w') as f:
+                f.write(f"Log file created at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            return True
+        with open(log_file, 'a') as f:
+            f.write(f"Log check at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        return True
+    except Exception as e:
+        print(f"Log file error: {e}")
+        return False
+
+def count_backup_logs():
+    backup_folder = "backuplogs"
+    count = 0
+    try:
+        if os.path.exists(backup_folder):
+            for filename in os.listdir(backup_folder):
+                if filename.startswith("neondisplay.log."):
+                    count += 1
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error counting backup logs: {e}")
+    return count
+
+# ============== MUSIC TRACKING FUNCTIONS ==============
+
+def parse_song_from_log(log_line):
+    if 'Now playing:' in log_line:
+        try:
+            if '🎵 Now playing:' in log_line:
+                song_part = log_line.split('🎵 Now playing: ')[1].strip()
+            else:
+                song_part = log_line.split('Now playing: ')[1].strip()
+            separators = [' -- ', ' - ', ' – ']
+            artist_part = 'Unknown Artist'
+            song = song_part
+            for separator in separators:
+                if separator in song_part:
+                    artist_part, song = song_part.split(separator, 1)
+                    break
+            artists = []
+            if artist_part != 'Unknown Artist':
+                artists = [artist.strip() for artist in artist_part.split(',')]
+                artists = [artist for artist in artists if artist]
+            if not artists:
+                artists = ['Unknown Artist']
+                artist_part = 'Unknown Artist'
+            return {
+                'song': song.strip(),
+                'artist': artist_part.strip(),
+                'artists': artists,
+                'full_track': f"{artist_part} -- {song}".strip()
+            }
+        except Exception as e:
+            logger = logging.getLogger('Launcher')
+            logger.error(f"Error parsing song from log: {e}")
+            return None
+    return None
+
+def get_current_track():
+    try:
+        if not is_hud_running():
+            return {
+                'song': 'No track playing',
+                'artist': '',
+                'album': '',
+                'progress': '0:00',
+                'duration': '0:00',
+                'is_playing': False,
+                'has_track': False
+            }
+        state_file = '.current_track_state.toml'
+        if os.path.exists(state_file):
+            state_data = toml.load(state_file)
+            track_data = state_data.get('current_track', {})
+            timestamp = track_data.get('timestamp', 0)
+            if time.time() - timestamp < 60:
+                progress_sec = track_data.get('current_position', 0)
+                duration_sec = track_data.get('duration', 0)
+                progress_min = progress_sec // 60
+                progress_sec = progress_sec % 60
+                duration_min = duration_sec // 60
+                duration_sec = duration_sec % 60
+                artists = track_data.get('artists', 'Unknown Artist')
+                if isinstance(artists, list):
+                    artists_str = ', '.join(artists)
+                else:
+                    artists_str = artists
+                return {
+                    'song': track_data.get('title', 'Unknown Track'),
+                    'artist': artists_str,
+                    'album': track_data.get('album', 'Unknown Album'),
+                    'progress': f"{progress_min}:{progress_sec:02d}",
+                    'duration': f"{duration_min}:{duration_sec:02d}",
+                    'is_playing': track_data.get('is_playing', False),
+                    'has_track': track_data.get('title') != 'No track playing'
+                }
+        return {
+            'song': 'No track playing',
+            'artist': '',
+            'album': '',
+            'progress': '0:00',
+            'duration': '0:00',
+            'is_playing': False,
+            'has_track': False
+        }
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting current track: {e}")
+        return {
+            'song': 'Error loading track',
+            'artist': '',
+            'album': '',
+            'progress': '0:00',
+            'duration': '0:00',
+            'is_playing': False,
+            'has_track': False
+        }
+
+def clear_track_state_file():
+    logger = logging.getLogger('Launcher')
+    try:
+        if os.path.exists('.current_track_state.toml'):
+            with open('.current_track_state.toml', 'w') as f:
+                empty_state = {
+                    'current_track': {
+                        'title': 'No track playing',
+                        'artists': '',
+                        'album': '',
+                        'current_position': 0,
+                        'duration': 0,
+                        'is_playing': False,
+                        'timestamp': time.time()
+                    }
+                }
+                toml.dump(empty_state, f)
+            logger.info("Cleared current track state")
+    except Exception as e:
+        logger.error(f"Error clearing track state: {e}")
 
 def get_last_logged_song():
     if not os.path.exists('songs.toml'):
@@ -1585,42 +1687,7 @@ def get_last_logged_song():
         logger.error(f"Error reading last logged song: {e}")
         return None
 
-def log_current_track_state():
-    global last_logged_song
-    try:
-        if not os.path.exists('.current_track_state.toml'):
-            return
-        state_data = toml.load('.current_track_state.toml')
-        track_data = state_data.get('current_track', {})
-        if not track_data.get('title') or track_data.get('title') in ['No track playing', 'Unknown Track']:
-            return
-        current_position = track_data.get('current_position', 0)
-        duration = track_data.get('duration', 1)
-        if duration > 0 and (current_position / duration) < 0.1:
-            return        
-        artists_data = track_data.get('artists', '')
-        artists_list = []
-        if isinstance(artists_data, list):
-            artists_list = [str(artist).strip() for artist in artists_data if artist and str(artist).strip()]
-        elif isinstance(artists_data, str) and artists_data.strip():
-            artists_list = [artist.strip() for artist in artists_data.split(',') if artist.strip()]
-        else:
-            artists_list = ['Unknown Artist']
-        if not artists_list:
-            artists_list = ['Unknown Artist']
-        artist_str = ', '.join(artists_list)
-        current_song = f"{artist_str} -- {track_data.get('title', '')}".strip()
-        if last_logged_song and current_song == last_logged_song:
-            return
-        song_info = {
-            'song': track_data.get('title', ''),
-            'artists': artists_list,
-            'full_track': current_song
-        }
-        update_song_count(song_info)
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error logging from current track state: {e}")
+# ============== SONG DATABASE FUNCTIONS ==============
 
 def init_song_database():
     conn = sqlite3.connect('song_stats.db', check_same_thread=False)
@@ -1687,65 +1754,42 @@ def update_song_count(song_info):
             except:
                 pass
 
-def get_current_track():
+def log_current_track_state():
+    global last_logged_song
     try:
-        if not is_hud_running():
-            return {
-                'song': 'No track playing',
-                'artist': '',
-                'album': '',
-                'progress': '0:00',
-                'duration': '0:00',
-                'is_playing': False,
-                'has_track': False
-            }
-        state_file = '.current_track_state.toml'
-        if os.path.exists(state_file):
-            state_data = toml.load(state_file)
-            track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 60:
-                progress_sec = track_data.get('current_position', 0)
-                duration_sec = track_data.get('duration', 0)
-                progress_min = progress_sec // 60
-                progress_sec = progress_sec % 60
-                duration_min = duration_sec // 60
-                duration_sec = duration_sec % 60
-                artists = track_data.get('artists', 'Unknown Artist')
-                if isinstance(artists, list):
-                    artists_str = ', '.join(artists)
-                else:
-                    artists_str = artists
-                return {
-                    'song': track_data.get('title', 'Unknown Track'),
-                    'artist': artists_str,
-                    'album': track_data.get('album', 'Unknown Album'),
-                    'progress': f"{progress_min}:{progress_sec:02d}",
-                    'duration': f"{duration_min}:{duration_sec:02d}",
-                    'is_playing': track_data.get('is_playing', False),
-                    'has_track': track_data.get('title') != 'No track playing'
-                }
-        return {
-            'song': 'No track playing',
-            'artist': '',
-            'album': '',
-            'progress': '0:00',
-            'duration': '0:00',
-            'is_playing': False,
-            'has_track': False
+        if not os.path.exists('.current_track_state.toml'):
+            return
+        state_data = toml.load('.current_track_state.toml')
+        track_data = state_data.get('current_track', {})
+        if not track_data.get('title') or track_data.get('title') in ['No track playing', 'Unknown Track']:
+            return
+        current_position = track_data.get('current_position', 0)
+        duration = track_data.get('duration', 1)
+        if duration > 0 and (current_position / duration) < 0.1:
+            return        
+        artists_data = track_data.get('artists', '')
+        artists_list = []
+        if isinstance(artists_data, list):
+            artists_list = [str(artist).strip() for artist in artists_data if artist and str(artist).strip()]
+        elif isinstance(artists_data, str) and artists_data.strip():
+            artists_list = [artist.strip() for artist in artists_data.split(',') if artist.strip()]
+        else:
+            artists_list = ['Unknown Artist']
+        if not artists_list:
+            artists_list = ['Unknown Artist']
+        artist_str = ', '.join(artists_list)
+        current_song = f"{artist_str} -- {track_data.get('title', '')}".strip()
+        if last_logged_song and current_song == last_logged_song:
+            return
+        song_info = {
+            'song': track_data.get('title', ''),
+            'artists': artists_list,
+            'full_track': current_song
         }
+        update_song_count(song_info)
     except Exception as e:
         logger = logging.getLogger('Launcher')
-        logger.error(f"Error getting current track: {e}")
-        return {
-            'song': 'Error loading track',
-            'artist': '',
-            'album': '',
-            'progress': '0:00',
-            'duration': '0:00',
-            'is_playing': False,
-            'has_track': False
-        }
+        logger.error(f"Error logging from current track state: {e}")
 
 def load_song_counts():
     try:
@@ -1814,21 +1858,7 @@ def generate_music_stats(max_items=1000):
             pass
         return {}, {}, 0, 0, 0
 
-def generate_chart_data(stats, label_type):
-    if not stats:
-        return {'labels': [], 'data': [], 'colors': []}
-    labels = list(stats.keys())
-    data = list(stats.values())
-    colors = []
-    for i in range(len(labels)):
-        hue = (i * 137.5) % 360
-        colors.append(f'hsl({hue}, 70%, 60%)')
-    return {
-        'labels': labels,
-        'data': data,
-        'colors': colors,
-        'label_type': label_type
-    }
+# ============== CLEANUP AND SIGNAL HANDLING ==============
 
 def cleanup():
     logger = logging.getLogger('Launcher')
@@ -1872,6 +1902,8 @@ def signal_handler(sig, frame):
     logger.info("Shutting down launcher...")
     cleanup()
     os._exit(0)
+
+# ============== MAIN FUNCTION ==============
 
 def main():
     ensure_log_file()
@@ -1932,7 +1964,6 @@ def main():
             logger.info(f"📍 Web UI available at: http://{ip}:{chosen_port}")
     else:
         logger.info(f"📍 Web UI available at: http://127.0.0.1:{chosen_port}")
-    
     logger.info("⏹️  Press Ctrl+C to stop the launcher")
     try:
         app.run(host='0.0.0.0', port=chosen_port, debug=False, use_reloader=False)
