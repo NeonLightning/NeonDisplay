@@ -13,6 +13,7 @@ except ImportError:
 sys.stdout.reconfigure(line_buffering=True)
 
 # ============== CONSTANTS ==============
+
 SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
 UPDATE_INTERVAL_WEATHER = 3600
@@ -102,6 +103,7 @@ DEFAULT_CONFIG = {
 }
 
 # ============== GLOBAL VARIABLES ==============
+
 weather_cache = {}
 album_bg_cache = {}
 exit_event = Event()
@@ -143,6 +145,7 @@ last_display_time = 0
 waveshare_lock = RLock()
 file_write_lock = threading.Lock()
 last_activity_time = time.time()
+st7789_lock = threading.Lock()
 display_sleeping = False
 last_saved_album_art_hash = None
 internet_available = True
@@ -320,7 +323,7 @@ def find_touchscreen():
     return None
 
 def handle_buttons():
-    global START_SCREEN
+    global START_SCREEN, display_sleeping
     if not HAS_GPIO:
         print("GPIO not available - button controls disabled")
         while not exit_event.is_set():
@@ -338,7 +341,7 @@ def handle_buttons():
             else:
                 raise
     print("Button handler started:")
-    print("A: Switch screens, B: Switch screens, X: Reset art, Y: Toggle time")
+    print("A: Switch to Clock, B: Switch to Weather, X: Switch to Spotify, Y: Toggle Display On/Off")
     while not exit_event.is_set():
         for button in buttons:
             try:
@@ -348,18 +351,22 @@ def handle_buttons():
                         button_last_press[button] = current_time
                         update_activity()
                         if button == BUTTON_A:
-                            START_SCREEN = "spotify"
-                            update_display()
+                            if START_SCREEN != "time":
+                                START_SCREEN = "time"
+                                update_display()
                         elif button == BUTTON_B:
-                            START_SCREEN = "weather"
-                            update_display()
+                            if START_SCREEN != "weather":
+                                START_SCREEN = "weather"
+                                update_display()
                         elif button == BUTTON_X:
-                            if START_SCREEN == "time":
+                            if START_SCREEN != "spotify":
+                                START_SCREEN = "spotify"
                                 update_display()
                         elif button == BUTTON_Y:
-                            global TIME_DISPLAY
-                            TIME_DISPLAY = not TIME_DISPLAY
-                            update_display()
+                            if display_sleeping:
+                                wake_up_display()
+                            else:
+                                go_to_sleep()
             except Exception:
                 pass
         time.sleep(0.1)
@@ -634,29 +641,34 @@ def merge_configs(default_config, loaded_config):
 
 # ============== DISPLAY FUNCTIONS ==============
 
+def clear_waveshare_display():
+    global waveshare_epd
+    if not HAS_WAVESHARE_EPD or waveshare_epd is None:
+        return
+    
+    try:
+        waveshare_epd.init()
+        white_img = Image.new('1', (250, 122), 255)
+        waveshare_epd.display(waveshare_epd.getbuffer(white_img))
+        waveshare_epd.sleep()
+    except Exception as e:
+        print(f"Failed to clear waveshare display: {e}")
+        try:
+            waveshare_epd.init()
+            waveshare_epd.Clear(0xFF)
+            waveshare_epd.sleep()
+        except Exception as e2:
+            print(f"Failed to reset waveshare display: {e2}")
+
 def clear_framebuffer():
     global HAS_ST7789
     display_type = config.get("display", {}).get("type", "framebuffer")
+    
     if display_type == "dummy":
         return
     elif display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
-        try:
-            from waveshare_epd.epd2in13_V3 import EPD
-            epd = EPD()
-            epd.init()
-            white_img = Image.new('1', (250, 122), 255)
-            epd.display(epd.getbuffer(white_img))
-            epd.sleep()
-            return
-        except Exception as e:
-            try:
-                from waveshare_epd.epd2in13_V3 import EPD
-                epd = EPD()
-                epd.init()
-                epd.Clear(0xFF)
-                epd.sleep()
-            except Exception as e2:
-                print(f"Failed to clear waveshare display: {e2}")
+        clear_waveshare_display()
+        return
     elif display_type == "st7789" and HAS_ST7789 and st7789_display:
         black_img = Image.new("RGB", (320, 240), "black")
         st7789_display.display(black_img)
@@ -707,8 +719,80 @@ def convert_to_rgb565(image):
     output[:, :, 1] = (rgb565 >> 8) & 0xFF
     return output
 
+def draw_waveshare(weather_info, spotify_track):
+    global waveshare_base_image, partial_refresh_count
+    display_width = 250
+    display_height = 122
+    img = Image.new('1', (display_width, display_height), 255)
+    draw = ImageDraw.Draw(img)
+    font_small, font_medium, font_large = load_waveshare_fonts()
+    content_changed = determine_waveshare_content_change(spotify_track, weather_info)
+    draw_waveshare_border(draw, display_width, display_height)
+    draw_waveshare_track_info(draw, spotify_track, font_medium, display_width, display_height)
+    album_art_size = 60
+    album_art_x = display_width - album_art_size - 3
+    album_art_y = display_height - album_art_size - 20
+    with art_lock:
+        album_img = album_art_image
+    draw_waveshare_album_art(img, album_img, album_art_x, album_art_y, album_art_size)
+    draw_waveshare_weather_info(img, draw, weather_info, font_small, font_large, display_height)
+    draw_waveshare_time(draw, font_medium, display_width, display_height)
+    img.content_changed = content_changed
+    return img
+
+def determine_waveshare_content_change(spotify_track, weather_info):
+    content_changed = False
+    current_track_id = None
+    if spotify_track:
+        current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
+    current_weather_id = None
+    if weather_info:
+        current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
+    if not hasattr(determine_waveshare_content_change, 'last_track_id'):
+        determine_waveshare_content_change.last_track_id = None
+        determine_waveshare_content_change.last_weather_id = None
+        content_changed = True
+    if current_track_id != determine_waveshare_content_change.last_track_id:
+        content_changed = True
+        determine_waveshare_content_change.last_track_id = current_track_id
+    if current_weather_id != determine_waveshare_content_change.last_weather_id:
+        content_changed = True
+        determine_waveshare_content_change.last_weather_id = current_weather_id
+    return content_changed
+
 def display_image_on_dummy():
     pass
+
+def display_image_on_waveshare(image):
+    global waveshare_epd, waveshare_base_image, partial_refresh_count
+    with waveshare_lock:
+        if waveshare_epd is None:
+            if not init_waveshare_display():
+                return
+        try:
+            display_width = 250
+            display_height = 122
+            if image.size != (display_width, display_height):
+                image = image.resize((display_width, display_height), Image.BILINEAR)
+            if image.mode != '1':
+                image = image.convert('1')
+            content_changed = getattr(image, 'content_changed', True)
+            if content_changed or partial_refresh_count >= 300:
+                waveshare_epd.display(waveshare_epd.getbuffer(image))
+                waveshare_base_image = image.copy()
+                partial_refresh_count = 0
+            else:
+                waveshare_epd.displayPartial(waveshare_epd.getbuffer(image))
+                partial_refresh_count += 1
+        except Exception as e:
+            print(f"Waveshare display error: {e}")
+            try:
+                waveshare_epd.init()
+                waveshare_epd.display(waveshare_epd.getbuffer(image))
+                waveshare_base_image = image.copy()
+                partial_refresh_count = 0
+            except Exception as e2:
+                print(f"Failed to reset waveshare display: {e2}")
 
 def display_image_on_framebuffer(image):
     global last_display_time
@@ -749,45 +833,118 @@ def display_image_on_st7789(image):
     try:
         if st7789_display is None:
             st7789_display = init_st7789_display()
-            if st7789_display is None: return
+            if st7789_display is None: 
+                return
         scaled_image = image.resize((320, 240), Image.BILINEAR)
         if scaled_image.mode != "RGB": 
             scaled_image = scaled_image.convert("RGB")
-        st7789_display.display(scaled_image)
+        with st7789_lock:
+            st7789_display.display(scaled_image)
     except Exception as e:
         print(f"ST7789 display error: {e}")
-        display_image_on_original_fb(image)
-
-def display_image_on_waveshare(image):
-    global waveshare_epd, waveshare_base_image, partial_refresh_count
-    with waveshare_lock:
-        if waveshare_epd is None:
-            if not init_waveshare_display():
-                return
         try:
-            display_width = 250
-            display_height = 122
-            if image.size != (display_width, display_height):
-                image = image.resize((display_width, display_height), Image.BILINEAR)
-            if image.mode != '1':
-                image = image.convert('1')
-            content_changed = getattr(image, 'content_changed', True)
-            if content_changed or partial_refresh_count >= 300:
-                waveshare_epd.display(waveshare_epd.getbuffer(image))
-                waveshare_base_image = image.copy()
-                partial_refresh_count = 0
+            st7789_display = init_st7789_display()
+        except:
+            st7789_display = None
+
+def draw_waveshare(weather_info, spotify_track):
+    global waveshare_base_image, partial_refresh_count
+    display_width = 250
+    display_height = 122
+    img = Image.new('1', (display_width, display_height), 255)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
+    try:
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+    except:
+        font_small = ImageFont.load_default()
+        font_medium = ImageFont.load_default()
+        font_large = ImageFont.load_default()
+    content_changed = False
+    current_track_id = None
+    if spotify_track:
+        current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
+    current_weather_id = None
+    if weather_info:
+        current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
+    if not hasattr(draw_waveshare, 'last_track_id'):
+        draw_waveshare.last_track_id = None
+        draw_waveshare.last_weather_id = None
+        content_changed = True
+    if current_track_id != draw_waveshare.last_track_id:
+        content_changed = True
+        draw_waveshare.last_track_id = current_track_id
+    if current_weather_id != draw_waveshare.last_weather_id:
+        content_changed = True
+        draw_waveshare.last_weather_id = current_weather_id
+    album_art_size = 60
+    album_art_x = display_width - album_art_size - 3
+    album_art_y = display_height - album_art_size - 20
+    if spotify_track:
+        artist = spotify_track.get('artists', 'Unknown Artist')
+        title = spotify_track.get('title', 'No Track')
+        with scroll_lock:
+            if not hasattr(draw_waveshare, 'title_scroll_offset'):
+                draw_waveshare.title_scroll_offset = 0
+                draw_waveshare.artist_scroll_offset = 0
+            title_bbox = draw.textbbox((0, 0), title, font=font_medium)
+            title_width = title_bbox[2] - title_bbox[0]
+            scroll_speed = 4
+            if title_width > display_width - 20:
+                total_scroll_distance = title_width + 15
+                draw_waveshare.title_scroll_offset = (draw_waveshare.title_scroll_offset + scroll_speed) % total_scroll_distance
+                title_x = -draw_waveshare.title_scroll_offset
+                draw.text((title_x, 8), title, font=font_medium, fill=0)
+                draw.text((title_x + total_scroll_distance, 8), title, font=font_medium, fill=0)
             else:
-                waveshare_epd.displayPartial(waveshare_epd.getbuffer(image))
-                partial_refresh_count += 1
-        except Exception as e:
-            print(f"Waveshare display error: {e}")
+                title_x = (display_width - title_width) // 2
+                draw.text((title_x, 8), title, font=font_medium, fill=0)
+            artist_bbox = draw.textbbox((0, 0), artist, font=font_medium)
+            artist_width = artist_bbox[2] - artist_bbox[0]
+            if artist_width > display_width - 20:
+                total_scroll_distance = artist_width + 20
+                draw_waveshare.artist_scroll_offset = (draw_waveshare.artist_scroll_offset + scroll_speed) % total_scroll_distance
+                artist_x = -draw_waveshare.artist_scroll_offset
+                draw.text((artist_x, 25), artist, font=font_medium, fill=0)
+                draw.text((artist_x + total_scroll_distance, 25), artist, font=font_medium, fill=0)
+            else:
+                artist_x = (display_width - artist_width) // 2
+                draw.text((artist_x, 25), artist, font=font_medium, fill=0)
+        with art_lock:
+            album_img = album_art_image
+        if album_img is not None:
+            bw_album_art = convert_to_1bit_dithered(album_img, (album_art_size, album_art_size))
+            img.paste(bw_album_art, (album_art_x, album_art_y))
+    else:
+        if hasattr(draw_waveshare, 'title_scroll_offset'):
+            draw_waveshare.title_scroll_offset = 0
+            draw_waveshare.artist_scroll_offset = 0
+        draw.text((5, 8), "No music playing", font=font_medium, fill=0)
+    if weather_info:
+        weather_icon_x = 8
+        weather_icon_y = display_height - 55
+        if weather_info and "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
             try:
-                waveshare_epd.init()
-                waveshare_epd.display(waveshare_epd.getbuffer(image))
-                waveshare_base_image = image.copy()
-                partial_refresh_count = 0
-            except Exception as e2:
-                print(f"Failed to reset waveshare display: {e2}")
+                img.paste(weather_info["cached_icon"], (weather_icon_x, weather_icon_y))
+            except Exception as e:
+                print(f"Error pasting cached weather icon: {e}")
+        temp_text = f"{weather_info['temp']}°C"
+        draw.text((45, display_height - 55), temp_text, font=font_large, fill=0)
+        feels_like_text = f"Feels: {weather_info['feels_like']}°C"
+        draw.text((45, display_height - 35), feels_like_text, font=font_small, fill=0)
+        desc_text = weather_info['description'][:15]
+        draw.text((45, display_height - 20), desc_text, font=font_small, fill=0)
+    now = datetime.datetime.now().strftime("%H:%M")
+    time_bbox = draw.textbbox((0, 0), now, font=font_medium)
+    time_width = time_bbox[2] - time_bbox[0]
+    time_height = time_bbox[3] - time_bbox[1]
+    clock_x = display_width - time_width - 5
+    clock_y = display_height - time_height - 8
+    draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
+    img.content_changed = content_changed
+    return img
 
 def draw_text_aliased(draw, image, position, text, font, fill):
     mask = Image.new("L", image.size, 0)
@@ -1028,12 +1185,33 @@ def draw_spotify_image(spotify_track):
     if PROGRESSBAR_DISPLAY:
         progress_overlay, time_y_offset = draw_progress_bar(spotify_track, secondary_color, main_color)
         overlay = Image.alpha_composite(overlay, progress_overlay)
+        if spotify_track and 'current_position' in spotify_track and 'duration' in spotify_track:
+            current_mins = spotify_track['current_position'] // 60
+            current_secs = spotify_track['current_position'] % 60
+            total_mins = spotify_track['duration'] // 60
+            total_secs = spotify_track['duration'] % 60
+            time_text = f"{current_mins}:{current_secs:02d} / {total_mins}:{total_secs:02d}"
+            time_bbox = SPOT_MEDIUM_FONT.getbbox(time_text)
+            time_width = time_bbox[2] - time_bbox[0]
+            time_height = time_bbox[3] - time_bbox[1]
+            padding = 4
+            box_height = time_height + (padding * 2)
+            time_x = 10
+            box_y = SCREEN_HEIGHT - box_height - 15
+            text_y = box_y + padding - time_bbox[1]
+            time_overlay_img = Image.new("RGBA", (SCREEN_WIDTH, SCREEN_HEIGHT), (0, 0, 0, 0))
+            time_draw = ImageDraw.Draw(time_overlay_img)
+            time_draw.rectangle([time_x - padding, box_y, time_x + time_width + padding, box_y + box_height], fill=(0, 0, 0, 200))
+            time_draw.text((time_x, text_y), time_text, fill=secondary_color, font=SPOT_MEDIUM_FONT)
+            overlay = Image.alpha_composite(overlay, time_overlay_img)
     else:
         time_y_offset = 0
     if TIME_DISPLAY:
         now = datetime.datetime.now().strftime("%H:%M")
-        time_x = SCREEN_WIDTH - 150
-        time_y = SCREEN_HEIGHT - 50 - time_y_offset
+        time_bbox = SPOT_LARGE_FONT.getbbox(now)
+        time_width = time_bbox[2] - time_bbox[0]
+        time_x = SCREEN_WIDTH - time_width - 15
+        time_y = SCREEN_HEIGHT - 30 - time_y_offset
         time_overlay = draw_time_text(now, SPOT_LARGE_FONT, main_color, time_x, time_y)
         overlay = Image.alpha_composite(overlay, time_overlay)
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
@@ -1087,6 +1265,77 @@ def draw_time_text(time_str, font, color, position_x, position_y):
     text_y = position_y + padding - time_bbox[1]
     draw.text((text_x, text_y), time_str, fill=color, font=font)
     return overlay
+
+def draw_waveshare_album_art(img, album_art_img, album_art_x, album_art_y, album_art_size):
+    if album_art_img is not None:
+        bw_album_art = convert_to_1bit_dithered(album_art_img, (album_art_size, album_art_size))
+        img.paste(bw_album_art, (album_art_x, album_art_y))
+
+def draw_waveshare_border(draw, display_width, display_height):
+    draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
+
+def draw_waveshare_time(draw, font_medium, display_width, display_height):
+    now = datetime.datetime.now().strftime("%H:%M")
+    time_bbox = draw.textbbox((0, 0), now, font=font_medium)
+    time_width = time_bbox[2] - time_bbox[0]
+    time_height = time_bbox[3] - time_bbox[1]
+    clock_x = display_width - time_width - 5
+    clock_y = display_height - time_height - 8
+    draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
+
+def draw_waveshare_track_info(draw, spotify_track, font_medium, display_width, display_height):
+    if not spotify_track:
+        if hasattr(draw_waveshare_track_info, 'title_scroll_offset'):
+            draw_waveshare_track_info.title_scroll_offset = 0
+            draw_waveshare_track_info.artist_scroll_offset = 0
+        draw.text((5, 8), "No music playing", font=font_medium, fill=0)
+        return
+    artist = spotify_track.get('artists', 'Unknown Artist')
+    title = spotify_track.get('title', 'No Track')
+    with scroll_lock:
+        if not hasattr(draw_waveshare_track_info, 'title_scroll_offset'):
+            draw_waveshare_track_info.title_scroll_offset = 0
+            draw_waveshare_track_info.artist_scroll_offset = 0
+        title_bbox = draw.textbbox((0, 0), title, font=font_medium)
+        title_width = title_bbox[2] - title_bbox[0]
+        scroll_speed = 4
+        if title_width > display_width - 20:
+            total_scroll_distance = title_width + 15
+            draw_waveshare_track_info.title_scroll_offset = (draw_waveshare_track_info.title_scroll_offset + scroll_speed) % total_scroll_distance
+            title_x = -draw_waveshare_track_info.title_scroll_offset
+            draw.text((title_x, 8), title, font=font_medium, fill=0)
+            draw.text((title_x + total_scroll_distance, 8), title, font=font_medium, fill=0)
+        else:
+            title_x = (display_width - title_width) // 2
+            draw.text((title_x, 8), title, font=font_medium, fill=0)
+        artist_bbox = draw.textbbox((0, 0), artist, font=font_medium)
+        artist_width = artist_bbox[2] - artist_bbox[0]
+        if artist_width > display_width - 20:
+            total_scroll_distance = artist_width + 20
+            draw_waveshare_track_info.artist_scroll_offset = (draw_waveshare_track_info.artist_scroll_offset + scroll_speed) % total_scroll_distance
+            artist_x = -draw_waveshare_track_info.artist_scroll_offset
+            draw.text((artist_x, 25), artist, font=font_medium, fill=0)
+            draw.text((artist_x + total_scroll_distance, 25), artist, font=font_medium, fill=0)
+        else:
+            artist_x = (display_width - artist_width) // 2
+            draw.text((artist_x, 25), artist, font=font_medium, fill=0)
+
+def draw_waveshare_weather_info(draw, weather_info, font_small, font_large, display_height):
+    if not weather_info:
+        return
+    weather_icon_x = 8
+    weather_icon_y = display_height - 55
+    if "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
+        try:
+            img.paste(weather_info["cached_icon"], (weather_icon_x, weather_icon_y))
+        except Exception as e:
+            print(f"Error pasting cached weather icon: {e}")
+    temp_text = f"{weather_info['temp']}°C"
+    draw.text((45, display_height - 55), temp_text, font=font_large, fill=0)
+    feels_like_text = f"Feels: {weather_info['feels_like']}°C"
+    draw.text((45, display_height - 35), feels_like_text, font=font_small, fill=0)
+    desc_text = weather_info['description'][:15]
+    draw.text((45, display_height - 20), desc_text, font=font_small, fill=0)
 
 def draw_weather_icon(img, weather_info):
     if "icon_id" in weather_info:
@@ -1176,6 +1425,13 @@ def update_artist_position(frame_time):
             return True, True
         return True, False
     return False, False
+
+def wake_up_display():
+    global display_sleeping
+    if display_sleeping:
+        display_sleeping = False
+        update_activity()
+        update_display()
 
 # ============== INTERNET FUNCTIONS ==============
 
@@ -1390,6 +1646,21 @@ def cleanup_scroll_state():
 def signal_handler(sig, frame):
     print(f"Received signal {sig}, shutting down quickly...")
     exit_event.set()
+
+def go_to_sleep():
+    global display_sleeping, last_display_time
+    if not display_sleeping:
+        display_sleeping = True
+        try:
+            if display_type == "st7789" and HAS_ST7789 and st7789_display:
+                black_img = Image.new("RGB", (320, 240), "black")
+                with st7789_lock:
+                    st7789_display.display(black_img)
+            time.sleep(0.05)
+        except:
+            pass
+        last_display_time = 0
+        clear_framebuffer()
 
 # ============== PREPARE FUNCTIONS ==============
 
@@ -2054,6 +2325,7 @@ def update_weather_icon(weather_info):
     return weather_info
 
 # ============== CONFIG LOADING AND INITIALIZATION ==============
+
 config = load_config()
 if config["display"]["type"] == "waveshare_epd":
     try:
@@ -2062,6 +2334,8 @@ if config["display"]["type"] == "waveshare_epd":
     except ImportError:
         HAS_WAVESHARE_EPD = False
         EPD = None
+else:
+    HAS_WAVESHARE_EPD = False
 HAS_ST7789 = False
 if config["display"]["type"] == "st7789":
     try:
@@ -2111,6 +2385,17 @@ CLOCK_COLOR = config["clock"].get("color", "black")
 MIN_DISPLAY_INTERVAL = 0.001
 DEBOUNCE_TIME = 0.3
 WAKEUP_CHECK_INTERVAL = 10
+
+def load_waveshare_fonts():
+    try:
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+    except:
+        font_small = ImageFont.load_default()
+        font_medium = ImageFont.load_default()
+        font_large = ImageFont.load_default()
+    return font_small, font_medium, font_large
 
 # ============== MAIN ==============
 

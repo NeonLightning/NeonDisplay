@@ -65,7 +65,6 @@ setup-display:
 	fi
 	@echo "$(GREEN)Installing LCD display drivers...$(NC)"
 	git clone https://github.com/Shinigamy19/RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046   $(LCD_SHOW_DIR)
-	mv $(LCD_SHOW_DIR) LCD-show
 	cd LCD-show && chmod +x ./*
 	sudo ./LCD35-show
 

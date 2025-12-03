@@ -3,3 +3,4 @@ config.toml
 .lgd-nfy0
 .current_track_state.toml
 song_counts.bin
+screens info.txt
