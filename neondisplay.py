@@ -208,6 +208,45 @@ def advanced_config():
         ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
     return render_template('advanced_config.html', config=config, ui_config=ui_config, available_css=available_css,spotify_configured=spotify_configured, spotify_authenticated=spotify_authenticated)
 
+@app.route('/check_display_change', methods=['POST'])
+def check_display_change():
+    current_display = load_config().get("display", {}).get("type", "framebuffer")
+    new_display = request.json.get('new_display_type')
+    needs_modification = False
+    message = ""
+    if current_display != "framebuffer" and new_display == "framebuffer":
+        needs_modification = True
+        message = "Switching to framebuffer display will uncomment 'dtoverlay=tft35a:rotate=90' in /boot/config.txt. A reboot will be required for changes to take effect."
+    elif current_display == "framebuffer" and new_display != "framebuffer":
+        needs_modification = True
+        message = "Switching from framebuffer display will comment out 'dtoverlay=tft35a:rotate=90' in /boot/config.txt. A reboot will be required(unless to dummy) for changes to take effect."
+    elif new_display != current_display:
+        message = "Changing display type will require a reset of hud for changes to take effect."
+    return jsonify({
+        'needs_modification': needs_modification,
+        'message': message,
+        'requires_reboot': new_display != current_display
+    })
+
+@app.route('/reset_advanced_config', methods=['POST'])
+def reset_advanced_config():
+    config = load_config()
+    config["display"] = DEFAULT_CONFIG["display"].copy()
+    config["fonts"] = DEFAULT_CONFIG["fonts"].copy()
+    config["api_keys"] = DEFAULT_CONFIG["api_keys"].copy()
+    config["settings"] = DEFAULT_CONFIG["settings"].copy()
+    config["wifi"] = DEFAULT_CONFIG["wifi"].copy()
+    config["buttons"] = DEFAULT_CONFIG["buttons"].copy()
+    config["logging"] = DEFAULT_CONFIG["logging"].copy()
+    config["clock"] = DEFAULT_CONFIG["clock"].copy()
+    preserved_ui = config.get("ui", {}).copy()
+    preserved_auto_start = config.get("auto_start", {}).copy()
+    config["ui"] = preserved_ui
+    config["auto_start"] = preserved_auto_start
+    save_config(config)
+    flash('success', 'Advanced configuration reset to defaults!')
+    return redirect(url_for('advanced_config'))
+
 @app.route('/save_all_config', methods=['POST'])
 def save_all_config():
     config = load_config()
@@ -243,13 +282,19 @@ def save_advanced_config():
     else:
         config["ui"]["css_file"] = DEFAULT_CONFIG["ui"]["css_file"]
     try:
+        old_display_type = config.get("display", {}).get("type", "framebuffer")
+        new_display_type = request.form.get('display_type', 'framebuffer')
+        modify_boot = False
+        if old_display_type != new_display_type:
+            if request.form.get('modify_boot_config') == 'true':
+                modify_boot = True
         config["api_keys"]["openweather"] = request.form.get('openweather', '').strip()
         config["api_keys"]["google_geo"] = request.form.get('google_geo', '').strip()
         config["api_keys"]["client_id"] = request.form.get('client_id', '').strip()
         config["api_keys"]["client_secret"] = request.form.get('client_secret', '').strip()
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000').strip()
         config["settings"]["fallback_city"] = request.form.get('fallback_city', '').strip()
-        config["display"]["type"] = request.form.get('display_type', 'framebuffer')
+        config["display"]["type"] = new_display_type
         config["display"]["framebuffer"] = request.form.get('framebuffer_device', '/dev/fb1')
         config["display"]["rotation"] = int(request.form.get('rotation', 0))
         if "st7789" not in config["display"]:
@@ -294,30 +339,21 @@ def save_advanced_config():
         config["clock"]["background"] = request.form.get('clock_background', 'color')
         config["clock"]["color"] = request.form.get('clock_color', '#000000')
         config["clock"]["type"] = request.form.get('clock_type', 'digital')
+        if modify_boot and old_display_type != new_display_type:
+            enable_fb = (new_display_type == "framebuffer")
+            success, message = modify_boot_config(enable_fb)
+            if success:
+                flash('success', f'Configuration saved! {message} Please restart hud for display changes to take effect.')
+            else:
+                flash('warning', f'Configuration saved but boot config modification failed: {message}')
+        elif old_display_type != new_display_type:
+            flash('success', 'Configuration saved! Please restart hud for display changes to take effect.')
+        else:
+            flash('success', 'Advanced configuration saved successfully!')
         save_config(config)
-        flash('success', 'Advanced configuration saved successfully!')
         restart_processes_after_config()
     except Exception as e:
         flash('error', f'Error saving configuration: {str(e)}')
-    return redirect(url_for('advanced_config'))
-
-@app.route('/reset_advanced_config', methods=['POST'])
-def reset_advanced_config():
-    config = load_config()
-    config["display"] = DEFAULT_CONFIG["display"].copy()
-    config["fonts"] = DEFAULT_CONFIG["fonts"].copy()
-    config["api_keys"] = DEFAULT_CONFIG["api_keys"].copy()
-    config["settings"] = DEFAULT_CONFIG["settings"].copy()
-    config["wifi"] = DEFAULT_CONFIG["wifi"].copy()
-    config["buttons"] = DEFAULT_CONFIG["buttons"].copy()
-    config["logging"] = DEFAULT_CONFIG["logging"].copy()
-    config["clock"] = DEFAULT_CONFIG["clock"].copy()
-    preserved_ui = config.get("ui", {}).copy()
-    preserved_auto_start = config.get("auto_start", {}).copy()
-    config["ui"] = preserved_ui
-    config["auto_start"] = preserved_auto_start
-    save_config(config)
-    flash('success', 'Advanced configuration reset to defaults!')
     return redirect(url_for('advanced_config'))
 
 @app.route('/toggle_theme', methods=['POST'])
@@ -1146,6 +1182,16 @@ def stream_current_track():
 
 # ============== CONFIGURATION FUNCTIONS ==============
 
+def check_boot_config_line(line_to_check):
+    try:
+        with open('/boot/config.txt', 'r') as f:
+            content = f.read()
+            return line_to_check in content or f'#{line_to_check}' in content
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error reading /boot/config.txt: {e}")
+        return False
+    
 def get_available_css_files():
     static_dir = app.static_folder 
     if not os.path.isdir(static_dir):
@@ -1155,6 +1201,14 @@ def get_available_css_files():
         return ["colors.css"] 
     css_files.sort() 
     return css_files
+
+def is_config_ready():
+    config = load_config()
+    return all([
+        config["api_keys"]["openweather"],
+        config["api_keys"]["client_id"], 
+        config["api_keys"]["client_secret"]
+    ])
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
@@ -1169,17 +1223,56 @@ def load_config():
         print("Using default configuration")
         return DEFAULT_CONFIG.copy()
 
+def modify_boot_config(enable_framebuffer):
+    logger = logging.getLogger('Launcher')
+    overlay_line = "dtoverlay=tft35a:rotate=90"
+    try:
+        with open('/boot/config.txt', 'r') as f:
+            lines = f.readlines()
+        shutil.copy2('/boot/config.txt', '/boot/config.txt.backup')
+        logger.info("Created backup at /boot/config.txt.backup")
+        modified = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if enable_framebuffer:
+                if stripped == f'#{overlay_line}':
+                    new_lines.append(f'{overlay_line}\n')
+                    modified = True
+                elif stripped == overlay_line:
+                    new_lines.append(line)
+                else:
+                    new_lines.append(line)
+            else:
+                if stripped == overlay_line:
+                    new_lines.append(f'#{overlay_line}\n')
+                    modified = True
+                elif stripped == f'#{overlay_line}':
+                    new_lines.append(line)
+                else:
+                    new_lines.append(line)
+        if enable_framebuffer and not any(overlay_line in line for line in lines):
+            new_lines.append(f'\n# TFT Display Configuration\n')
+            new_lines.append(f'{overlay_line}\n')
+            modified = True
+        if modified:
+            with open('/boot/config.txt', 'w') as f:
+                f.writelines(new_lines)
+            return True, "Successfully modified /boot/config.txt"
+        else:
+            return True, "/boot/config.txt already in correct state"
+    except PermissionError:
+        error_msg = "Permission denied. Run with sudo or adjust permissions."
+        logger.error(error_msg)
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Error modifying /boot/config.txt: {str(e)}"
+        logger.error(error_msg)
+        return False, error_msg
+
 def save_config(config):
     with open(CONFIG_PATH, 'w') as f:
         toml.dump(config, f)
-
-def is_config_ready():
-    config = load_config()
-    return all([
-        config["api_keys"]["openweather"],
-        config["api_keys"]["client_id"], 
-        config["api_keys"]["client_secret"]
-    ])
 
 # ============== SPOTIFY FUNCTIONS ==============
 

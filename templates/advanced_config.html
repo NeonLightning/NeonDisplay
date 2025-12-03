@@ -299,6 +299,8 @@
                                     <option value="dummy" {% if config.display.type == "dummy" %}selected{% endif %}>Dummy</option>
                                 </select>
                                 <small>Select your display hardware type</small>
+                                <input type="hidden" id="original_display_type" value="{{ config.display.type }}">
+                                <input type="hidden" id="modify_boot_config" name="modify_boot_config" value="false">
                             </div>
                             <div class="form-group">
                                 <label for="framebuffer_device">Framebuffer Device:</label>
@@ -587,6 +589,7 @@
         </form>
     </div>
     <script>
+        let originalDisplayType = document.getElementById('original_display_type').value;
         function toggleTheme() {
             const currentTheme = document.body.getAttribute('data-theme');
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -628,6 +631,45 @@
                 });
             }
         }
+        document.querySelector('form').addEventListener('submit', async function(e) {
+            const newDisplayType = document.getElementById('display_type').value;
+            if (newDisplayType !== originalDisplayType) {
+                e.preventDefault();
+                try {
+                    const response = await fetch('/check_display_change', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            new_display_type: newDisplayType
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.message) {
+                        let confirmMessage = data.message;
+                        if (data.needs_modification) {
+                            confirmMessage += "\n\nBackup will be created at /boot/config.txt.backup\n\nDo you want to proceed?";
+                        } else {
+                            confirmMessage += "\n\nDo you want to proceed?";
+                        }
+                        if (confirm(confirmMessage)) {
+                            if (data.needs_modification) {
+                                document.getElementById('modify_boot_config').value = 'true';
+                            }
+                            e.target.submit();
+                        }
+                    } else {
+                        e.target.submit();
+                    }
+                } catch (error) {
+                    console.error('Error checking display change:', error);
+                    if (confirm('Unable to verify display change requirements. Proceed anyway?')) {
+                        e.target.submit();
+                    }
+                }
+            }
+        });
         document.addEventListener('DOMContentLoaded', function() {
             updateDisplayConfig();
             document.getElementById('display_type').addEventListener('change', updateDisplayConfig);
