@@ -5,11 +5,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageSta
 from threading import Thread, Event, RLock
 from spotipy.oauth2 import SpotifyOAuth
 from functools import lru_cache
-try:
-    import RPi.GPIO as GPIO
-    HAS_GPIO = True
-except ImportError:
-    HAS_GPIO = False
 sys.stdout.reconfigure(line_buffering=True)
 
 # ============== CONSTANTS ==============
@@ -719,47 +714,6 @@ def convert_to_rgb565(image):
     output[:, :, 1] = (rgb565 >> 8) & 0xFF
     return output
 
-def draw_waveshare(weather_info, spotify_track):
-    global waveshare_base_image, partial_refresh_count
-    display_width = 250
-    display_height = 122
-    img = Image.new('1', (display_width, display_height), 255)
-    draw = ImageDraw.Draw(img)
-    font_small, font_medium, font_large = load_waveshare_fonts()
-    content_changed = determine_waveshare_content_change(spotify_track, weather_info)
-    draw_waveshare_border(draw, display_width, display_height)
-    draw_waveshare_track_info(draw, spotify_track, font_medium, display_width, display_height)
-    album_art_size = 60
-    album_art_x = display_width - album_art_size - 3
-    album_art_y = display_height - album_art_size - 20
-    with art_lock:
-        album_img = album_art_image
-    draw_waveshare_album_art(img, album_img, album_art_x, album_art_y, album_art_size)
-    draw_waveshare_weather_info(img, draw, weather_info, font_small, font_large, display_height)
-    draw_waveshare_time(draw, font_medium, display_width, display_height)
-    img.content_changed = content_changed
-    return img
-
-def determine_waveshare_content_change(spotify_track, weather_info):
-    content_changed = False
-    current_track_id = None
-    if spotify_track:
-        current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
-    current_weather_id = None
-    if weather_info:
-        current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
-    if not hasattr(determine_waveshare_content_change, 'last_track_id'):
-        determine_waveshare_content_change.last_track_id = None
-        determine_waveshare_content_change.last_weather_id = None
-        content_changed = True
-    if current_track_id != determine_waveshare_content_change.last_track_id:
-        content_changed = True
-        determine_waveshare_content_change.last_track_id = current_track_id
-    if current_weather_id != determine_waveshare_content_change.last_weather_id:
-        content_changed = True
-        determine_waveshare_content_change.last_weather_id = current_weather_id
-    return content_changed
-
 def display_image_on_dummy():
     pass
 
@@ -855,7 +809,7 @@ def draw_waveshare(weather_info, spotify_track):
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
     try:
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
         font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
         font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
     except:
@@ -2339,6 +2293,11 @@ else:
 HAS_ST7789 = False
 if config["display"]["type"] == "st7789":
     try:
+        import RPi.GPIO as GPIO
+        HAS_GPIO = True
+    except ImportError:
+        HAS_GPIO = False
+    try:
         import st7789
         HAS_ST7789 = True
     except ImportError:
@@ -2385,17 +2344,6 @@ CLOCK_COLOR = config["clock"].get("color", "black")
 MIN_DISPLAY_INTERVAL = 0.001
 DEBOUNCE_TIME = 0.3
 WAKEUP_CHECK_INTERVAL = 10
-
-def load_waveshare_fonts():
-    try:
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
-        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-    except:
-        font_small = ImageFont.load_default()
-        font_medium = ImageFont.load_default()
-        font_large = ImageFont.load_default()
-    return font_small, font_medium, font_large
 
 # ============== MAIN ==============
 

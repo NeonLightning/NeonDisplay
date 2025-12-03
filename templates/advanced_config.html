@@ -350,6 +350,43 @@
             </div>
             <div class="section">
                 <h2>□ ST7789 Display Configuration</h2>
+                <div class="section">
+                    <h2>▢ Button Configuration</h2>
+                    <div class="button-grid">
+                        <div class="button-config">
+                            <h4>Button A</h4>
+                            <div class="form-group">
+                                <label for="button_a">GPIO Pin:</label>
+                                <input type="number" id="button_a" name="button_a" value="{{ config.buttons.button_a }}">
+                                <small>GPIO pin number for Button A</small>
+                            </div>
+                        </div>
+                        <div class="button-config">
+                            <h4>Button B</h4>
+                            <div class="form-group">
+                                <label for="button_b">GPIO Pin:</label>
+                                <input type="number" id="button_b" name="button_b" value="{{ config.buttons.button_b }}">
+                                <small>GPIO pin number for Button B</small>
+                            </div>
+                        </div>
+                        <div class="button-config">
+                            <h4>Button X</h4>
+                            <div class="form-group">
+                                <label for="button_x">GPIO Pin:</label>
+                                <input type="number" id="button_x" name="button_x" value="{{ config.buttons.button_x }}">
+                                <small>GPIO pin number for Button X</small>
+                            </div>
+                        </div>
+                        <div class="button-config">
+                            <h4>Button Y</h4>
+                            <div class="form-group">
+                                <label for="button_y">GPIO Pin:</label>
+                                <input type="number" id="button_y" name="button_y" value="{{ config.buttons.button_y }}">
+                                <small>GPIO pin number for Button Y</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="config-grid">
                     <div>
                         <div class="form-group">
@@ -518,43 +555,6 @@
                             <label for="rescan_time">WiFi Rescan Time (seconds):</label>
                             <input type="number" id="rescan_time" name="rescan_time" value="{{ config.get('wifi', {}).get('rescan_time', 600) }}" min="30" max="3600" step="30">
                             <small>Time between WiFi network rescans (30-3600 seconds)</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="section">
-                <h2>▢ Button Configuration</h2>
-                <div class="button-grid">
-                    <div class="button-config">
-                        <h4>Button A</h4>
-                        <div class="form-group">
-                            <label for="button_a">GPIO Pin:</label>
-                            <input type="number" id="button_a" name="button_a" value="{{ config.buttons.button_a }}">
-                            <small>GPIO pin number for Button A</small>
-                        </div>
-                    </div>
-                    <div class="button-config">
-                        <h4>Button B</h4>
-                        <div class="form-group">
-                            <label for="button_b">GPIO Pin:</label>
-                            <input type="number" id="button_b" name="button_b" value="{{ config.buttons.button_b }}">
-                            <small>GPIO pin number for Button B</small>
-                        </div>
-                    </div>
-                    <div class="button-config">
-                        <h4>Button X</h4>
-                        <div class="form-group">
-                            <label for="button_x">GPIO Pin:</label>
-                            <input type="number" id="button_x" name="button_x" value="{{ config.buttons.button_x }}">
-                            <small>GPIO pin number for Button X</small>
-                        </div>
-                    </div>
-                    <div class="button-config">
-                        <h4>Button Y</h4>
-                        <div class="form-group">
-                            <label for="button_y">GPIO Pin:</label>
-                            <input type="number" id="button_y" name="button_y" value="{{ config.buttons.button_y }}">
-                            <small>GPIO pin number for Button Y</small>
                         </div>
                     </div>
                 </div>

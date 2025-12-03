@@ -83,7 +83,15 @@ DEFAULT_CONFIG = {
         "button_a": 5,
         "button_b": 6,
         "button_x": 16,
-        "button_y": 24
+        "button_y": 24,
+        "button_a_action": "clock",
+        "button_b_action": "weather",
+        "button_x_action": "spotify",
+        "button_y_action": "toggle_display",
+        "button_a_command": "",
+        "button_b_command": "",
+        "button_x_command": "",
+        "button_y_command": ""
     },
     "logging": {
         "max_log_lines": 10000,
@@ -322,6 +330,14 @@ def save_advanced_config():
         config["buttons"]["button_b"] = int(request.form.get('button_b', 6))
         config["buttons"]["button_x"] = int(request.form.get('button_x', 16))
         config["buttons"]["button_y"] = int(request.form.get('button_y', 24))
+        config["buttons"]["button_a_action"] = request.form.get('button_a_action', 'clock')
+        config["buttons"]["button_b_action"] = request.form.get('button_b_action', 'weather')
+        config["buttons"]["button_x_action"] = request.form.get('button_x_action', 'spotify')
+        config["buttons"]["button_y_action"] = request.form.get('button_y_action', 'toggle_display')
+        config["buttons"]["button_a_command"] = request.form.get('button_a_command', '').strip()
+        config["buttons"]["button_b_command"] = request.form.get('button_b_command', '').strip()
+        config["buttons"]["button_x_command"] = request.form.get('button_x_command', '').strip()
+        config["buttons"]["button_y_command"] = request.form.get('button_y_command', '').strip()
         config["wifi"]["ap_ssid"] = request.form.get('ap_ssid', 'Neonwifi-Manager')
         config["wifi"]["ap_ip"] = request.form.get('ap_ip', '192.168.42.1')
         config["wifi"]["rescan_time"] = int(request.form.get('rescan_time', 600))
