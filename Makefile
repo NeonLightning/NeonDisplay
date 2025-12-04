@@ -46,7 +46,12 @@ python-packages:
 	export UV_CONCURRENT_INSTALLS=3
 	export UV_CONCURRENT_BUILDS=3
 	bash ./swap.sh
-	uv pip install --python $(VENV_DIR)/bin/python spotipy st7789 numpy eink-wave evdev pillow flask pycairo dbus-python setuptools wheel toml rpi.gpio
+	@for pkg in spotipy st7789 numpy eink-wave evdev pillow flask pycairo dbus-python setuptools wheel toml; do \
+		echo "Installing $$pkg..."; \
+		uv pip install --python $(VENV_DIR)/bin/python $$pkg || echo "$(YELLOW)Failed to install $$pkg$(NC)"; \
+	done
+	@echo "$(YELLOW)Attempting to install RPi.GPIO...$(NC)"
+	@uv pip install --python $(VENV_DIR)/bin/python rpi.gpio || echo "$(YELLOW)RPi.GPIO not available (not critical for non-RPi systems)$(NC)"
 	@echo "$(GREEN)All Python packages installed in virtual environment$(NC)"
 	@echo "$(GREEN)Copying project files...$(NC)"
 	cp -r . $(PROJECT_DIR)/
