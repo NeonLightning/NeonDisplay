@@ -921,9 +921,9 @@ def api_current_track():
 
 @app.route('/clear_logs', methods=['POST'])
 def clear_logs():
-    log_file = 'neondisplay.log'
+    backup_folder = "backuplogs"
+    log_file = os.path.join(backup_folder, 'neondisplay.log')
     try:
-        backup_folder = "backuplogs"
         clear_option = request.form.get('clear_option', 'current')
         if clear_option == 'all':
             backups_cleared = 0
@@ -935,12 +935,35 @@ def clear_logs():
                 else:
                     break
             message = f'Backup logs cleared ({backups_cleared} files removed)'
-        else:
-            with open(log_file, 'w') as f:
-                f.write(f"Logs cleared at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            message = 'Current log cleared'
+        else:  # 'current' option
+            logger = logging.getLogger('Launcher')
+            for handler in logger.handlers[:]:
+                if isinstance(handler, RotatingFileHandler):
+                    handler.close()
+                    logger.removeHandler(handler)
+            if os.path.exists(log_file):
+                os.remove(log_file)
+            config = load_config()
+            log_config = config.get("logging", {})
+            max_lines = log_config.get("max_log_lines", 10000)
+            max_bytes = max_lines * 100  
+            backup_count = log_config.get("max_backup_files", 5)
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=max_bytes, 
+                backupCount=backup_count
+            )
+            file_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            message = 'Current log cleared successfully'
         return message, 200
     except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f'Error clearing logs: {str(e)}')
         return f'Error clearing logs: {str(e)}', 500
 
 @app.route('/clear_song_logs', methods=['POST'])
