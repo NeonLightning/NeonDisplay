@@ -2291,6 +2291,7 @@ if config["display"]["type"] == "waveshare_epd":
 else:
     HAS_WAVESHARE_EPD = False
 HAS_ST7789 = False
+HAS_GPIO = False
 if config["display"]["type"] == "st7789":
     try:
         import RPi.GPIO as GPIO
