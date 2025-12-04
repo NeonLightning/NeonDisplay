@@ -1512,6 +1512,10 @@ def sleep_monitor_loop():
 
 def spotify_loop():
     global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache, last_art_url, last_api_call, consecutive_no_track_count
+    global last_queue_data, last_queue_update
+    last_queue_data = []
+    last_queue_update = 0
+    QUEUE_UPDATE_INTERVAL = 10
     last_successful_write = 0
     write_interval = 0.5
     last_api_call = 0
@@ -1530,7 +1534,7 @@ def spotify_loop():
         current_check_interval = calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track)
         time_since_last_api = current_time - last_api_call
         if time_since_last_api < current_check_interval:
-            time.sleep(0.5)
+            time.sleep(1)
             continue
         try:
             last_api_call = current_time
@@ -1538,8 +1542,60 @@ def spotify_loop():
             api_error_count = 0
             if not track or not track.get('item'):
                 last_successful_write = handle_no_track_playing(current_time, last_successful_write, write_interval)
+                if current_time - last_queue_update > QUEUE_UPDATE_INTERVAL:
+                    write_current_track_state(None, [], track)
+                    last_queue_update = current_time
                 continue
-            last_successful_write, last_track_id, is_first_track_after_startup = handle_track_update(current_time, last_successful_write, write_interval, track, last_track_id, is_first_track_after_startup, previous_track_id)
+            last_successful_write, last_track_id, is_first_track_after_startup = handle_track_update(
+                current_time, last_successful_write, write_interval, track, 
+                last_track_id, is_first_track_after_startup, previous_track_id
+            )
+            track_changed = track['item'].get('id') != last_track_id or spotify_track is None
+            should_update_queue = (
+                (current_time - last_queue_update > QUEUE_UPDATE_INTERVAL) or 
+                track_changed or
+                not last_queue_data
+            )
+            if should_update_queue:
+                try:
+                    queue = sp.queue()
+                    queue_tracks = []
+                    if track and track.get('item'):
+                        current_track_item = track['item']
+                        current_artists = ', '.join([artist['name'] for artist in current_track_item.get('artists', [])])
+                        current_image_url = None
+                        if (current_track_item.get('album') and 
+                            current_track_item['album'].get('images')):
+                            current_image_url = current_track_item['album']['images'][-1]['url']
+                        queue_tracks.append({
+                            'name': current_track_item.get('name', 'Unknown Track'),
+                            'artists': current_artists,
+                            'album': current_track_item.get('album', {}).get('name', 'Unknown Album'),
+                            'uri': current_track_item.get('uri', ''),
+                            'image_url': current_image_url,
+                            'is_current': True
+                        })
+                    if queue and 'queue' in queue:
+                        for queue_track in queue['queue']:
+                            artists = ', '.join([artist['name'] for artist in queue_track.get('artists', [])])
+                            image_url = None
+                            if (queue_track.get('album') and 
+                                queue_track['album'].get('images')):
+                                image_url = queue_track['album']['images'][-1]['url']
+                            queue_tracks.append({
+                                'name': queue_track.get('name', ''),
+                                'artists': artists,
+                                'album': queue_track.get('album', {}).get('name', ''),
+                                'uri': queue_track.get('uri', ''),
+                                'image_url': image_url,
+                                'is_current': False
+                            })
+                    last_queue_data = queue_tracks
+                    last_queue_update = current_time
+                    write_current_track_state(spotify_track, queue_tracks, track)
+                except Exception as e:
+                    print(f"Error fetching queue: {e}")
+                    write_current_track_state(spotify_track, last_queue_data, track)
         except spotipy.exceptions.SpotifyException as e:
             api_error_count += 1
             if not handle_spotify_api_errors(e, api_error_count):
@@ -1643,25 +1699,22 @@ def prepare_track_data(track):
     artists_list = [artist['name'] for artist in item.get('artists', [])]
     artist_str = ", ".join(artists_list) if artists_list else "Unknown Artist"
     album_str = item['album']['name'] if item.get('album') else "Unknown Album"
-    current_position = track.get('progress_ms', 0) // 1000
-    duration = item.get('duration_ms', 0) // 1000
-    is_playing = track.get('is_playing', False)
-    shuffle_state = track.get('shuffle_state', False)
     device = track.get('device', {})
-    volume_percent = device.get('volume_percent', 50) if device else 50
-    device_name = device.get('name', '') if device else ''
+    device_name = device.get('name', '')
     device_active = device is not None
+    volume_percent = device.get('volume_percent', 50) if device else 50
     return {
         "title": item.get('name', "Unknown Track"),
         "artists": artist_str,
         "album": album_str,
-        "current_position": current_position,
-        "duration": duration,
-        "is_playing": is_playing,
-        "shuffle_state": shuffle_state,
+        "current_position": track.get('progress_ms', 0) // 1000,
+        "duration": item.get('duration_ms', 0) // 1000,
+        "is_playing": track.get('is_playing', False),
+        "shuffle_state": track.get('shuffle_state', False),
         "volume_percent": volume_percent,
         "device_name": device_name,
-        "device_active": device_active
+        "device_active": device_active,
+        "track_id": item.get('id')
     }
 
 def prepare_track_state_data(track_data):
@@ -1807,14 +1860,14 @@ def authenticate_spotify_interactive():
 
 def calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track):
     if api_error_count > 0:
-        return min(10 * (2 ** min(api_error_count-1, 2)), 60)
+        return min(30 * (2 ** min(api_error_count-1, 2)), 60)
     elif spotify_track and spotify_track.get('is_playing', False):
-        return 2
+        return 3
     else:
         if consecutive_no_track_count >= max_consecutive_no_track:
             return 30
         else:
-            return 2
+            return 3
 
 def fetch_album_art_with_retry(art_url, max_retries=2):
     for art_attempt in range(max_retries):
@@ -2165,21 +2218,69 @@ def validate_and_write_toml(data, temp_path, final_path):
                 pass
     return False
 
-def write_current_track_state(track_data):
+def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
     if not ENABLE_CURRENT_TRACK_DISPLAY:
         return
     with file_write_lock:
         try:
-            state_data = prepare_track_state_data(track_data)
-            for key, value in state_data['current_track'].items():
-                if value is None:
-                    state_data['current_track'][key] = ""
-                elif isinstance(value, str) and '\n' in value:
-                    state_data['current_track'][key] = value.replace('\n', ' ')
+            state_data = {}
+            if track_data:
+                state_data['current_track'] = {
+                    'title': track_data.get('title', 'Unknown Track') or "Unknown Track",
+                    'artists': track_data.get('artists', 'Unknown Artist') or "Unknown Artist",
+                    'album': track_data.get('album', 'Unknown Album') or "Unknown Album",
+                    'current_position': int(track_data.get('current_position', 0)),
+                    'duration': int(track_data.get('duration', 0)),
+                    'is_playing': bool(track_data.get('is_playing', False)),
+                    'timestamp': time.time(),
+                    'shuffle_state': bool(track_data.get('shuffle_state', False)),
+                    'volume_percent': int(track_data.get('volume_percent', 50)),
+                    'device_name': track_data.get('device_name', ''),
+                    'device_active': bool(track_data.get('device_active', False))
+                }
+                if raw_track_data and 'device' in raw_track_data:
+                    device = raw_track_data.get('device', {})
+                    state_data['current_track']['volume_percent'] = device.get('volume_percent', 50)
+                    state_data['current_track']['device_name'] = device.get('name', '')
+                    state_data['current_track']['device_active'] = device is not None
+                state_data['device_status'] = {
+                    'has_active_device': bool(state_data['current_track']['device_active']),
+                    'device_name': state_data['current_track']['device_name']
+                }
+            else:
+                state_data['current_track'] = {
+                    'title': 'No track playing',
+                    'artists': '',
+                    'album': '',
+                    'current_position': 0,
+                    'duration': 0,
+                    'is_playing': False,
+                    'timestamp': time.time(),
+                    'shuffle_state': False,
+                    'volume_percent': 50,
+                    'device_name': '',
+                    'device_active': False
+                }
+                state_data['device_status'] = {
+                    'has_active_device': False,
+                    'device_name': ''
+                }
+            if queue_data is not None:
+                state_data['queue'] = queue_data
+            elif 'queue' not in state_data:
+                state_data['queue'] = []
+            for key in ['current_track', 'device_status']:
+                if key in state_data:
+                    for subkey, value in state_data[key].items():
+                        if value is None:
+                            state_data[key][subkey] = ""
+                        elif isinstance(value, str) and '\n' in value:
+                            state_data[key][subkey] = value.replace('\n', ' ')
             temp_path = '.current_track_state.toml.tmp'
+            final_path = '.current_track_state.toml'
             with open(temp_path, 'w', encoding='utf-8') as f:
                 toml.dump(state_data, f)
-            if validate_and_write_toml(state_data, temp_path, '.current_track_state.toml'):
+            if validate_and_write_toml(state_data, temp_path, final_path):
                 return
             fallback_data = {
                 'current_track': {
@@ -2190,9 +2291,15 @@ def write_current_track_state(track_data):
                     'duration': 0,
                     'is_playing': False,
                     'timestamp': time.time()
-                }
+                },
+                'device_status': {
+                    'has_active_device': False,
+                    'device_name': ''
+                },
+                'queue': []
             }
-            with open('.current_track_state.toml', 'w', encoding='utf-8') as f:
+            
+            with open(final_path, 'w', encoding='utf-8') as f:
                 toml.dump(fallback_data, f)
         except Exception as e:
             print(f"Critical error writing track state: {e}")
@@ -2206,7 +2313,12 @@ def write_current_track_state(track_data):
                         'duration': 0,
                         'is_playing': False,
                         'timestamp': time.time()
-                    }
+                    },
+                    'device_status': {
+                        'has_active_device': False,
+                        'device_name': ''
+                    },
+                    'queue': []
                 }
                 with open('.current_track_state.toml', 'w', encoding='utf-8') as f:
                     toml.dump(basic_data, f)

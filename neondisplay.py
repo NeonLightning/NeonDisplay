@@ -691,6 +691,14 @@ def spotify_device_status():
     try:
         if os.path.exists('.current_track_state.toml'):
             state_data = toml.load('.current_track_state.toml')
+            device_status = state_data.get('device_status', {})
+            if device_status:
+                return {
+                    'success': True,
+                    'has_active_device': device_status.get('has_active_device', False),
+                    'device_name': device_status.get('device_name', ''),
+                    'cached': True
+                }
             track_data = state_data.get('current_track', {})
             timestamp = track_data.get('timestamp', 0)
             if time.time() - timestamp < 5:
@@ -702,17 +710,7 @@ def spotify_device_status():
                     'device_name': device_name if has_device else None,
                     'cached': True
                 }
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'has_active_device': False, 'error': message}
-        playback = sp.current_playback()
-        has_active_device = playback is not None and playback.get('device') is not None
-        return {
-            'success': True,
-            'has_active_device': has_active_device,
-            'device_name': playback['device']['name'] if has_active_device else None,
-            'cached': False
-        }
+        return {'success': False, 'has_active_device': False, 'error': 'No cached device status'}
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error checking device status: {e}")
@@ -721,41 +719,16 @@ def spotify_device_status():
 @app.route('/spotify_get_queue', methods=['GET'])
 def spotify_get_queue():
     try:
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        playback = sp.current_playback()
-        queue = sp.queue()
-        queue_tracks = []
-        if playback and playback.get('item'):
-            current_track = playback['item']
-            artists = ', '.join([artist['name'] for artist in current_track['artists']])
-            image_url = current_track['album']['images'][-1]['url'] if current_track['album']['images'] else None
-            queue_tracks.append({
-                'name': current_track['name'],
-                'artists': artists,
-                'album': current_track['album']['name'],
-                'uri': current_track['uri'],
-                'image_url': image_url,
-                'is_current': True
-            })
-        if queue and queue.get('queue'):
-            for track in queue['queue']:
-                artists = ', '.join([artist['name'] for artist in track['artists']])
-                image_url = track['album']['images'][-1]['url'] if track['album']['images'] else None
-                queue_tracks.append({
-                    'name': track['name'],
-                    'artists': artists,
-                    'album': track['album']['name'],
-                    'uri': track['uri'],
-                    'image_url': image_url,
-                    'is_current': False
-                })
-        return {'success': True, 'queue': queue_tracks}
+        if os.path.exists('.current_track_state.toml'):
+            state_data = toml.load('.current_track_state.toml')
+            queue_data = state_data.get('queue', [])
+            if queue_data:
+                return {'success': True, 'queue': queue_data, 'cached': True}
+        return {'success': False, 'error': 'No cached queue data', 'queue': []}
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Spotify get queue error: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': str(e), 'queue': []}
 
 @app.route('/spotify_get_shuffle_state', methods=['GET'])
 def spotify_get_shuffle_state():
@@ -764,22 +737,14 @@ def spotify_get_shuffle_state():
             state_data = toml.load('.current_track_state.toml')
             track_data = state_data.get('current_track', {})
             timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 5:
+            if time.time() - timestamp < 3:
                 is_shuffling = track_data.get('shuffle_state', False)
-                return jsonify({'is_shuffling': is_shuffling, 'cached': True})
-        sp, message = get_spotify_client()
-        if not sp:
-            return jsonify({'is_shuffling': False, 'error': message})
-        current_state = sp.current_playback()
-        if current_state and 'shuffle_state' in current_state:
-            is_shuffling = current_state.get('shuffle_state', False)
-            return jsonify({'is_shuffling': is_shuffling, 'cached': False})
-        else:
-            return jsonify({'is_shuffling': False, 'cached': False})
+                return jsonify({'success': True, 'is_shuffling': is_shuffling, 'cached': True})
+        return jsonify({'success': False, 'is_shuffling': False, 'error': 'No cached shuffle state'})
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error getting shuffle state: {e}")
-        return jsonify({'is_shuffling': False})
+        return jsonify({'success': False, 'is_shuffling': False, 'error': str(e)})
 
 @app.route('/spotify_get_volume', methods=['GET'])
 def spotify_get_volume():
@@ -788,24 +753,14 @@ def spotify_get_volume():
             state_data = toml.load('.current_track_state.toml')
             track_data = state_data.get('current_track', {})
             timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 5:
+            if time.time() - timestamp < 1:
                 cached_volume = track_data.get('volume_percent', 50)
                 return {'success': True, 'volume': cached_volume, 'cached': True}
-        sp, message = get_spotify_client()
-        if not sp:
-            return {'success': False, 'error': message}
-        if not check_internet_connection(timeout=3):
-            return {'success': False, 'error': 'No internet connection'}
-        playback = sp.current_playback()
-        if playback and 'device' in playback:
-            current_volume = playback['device'].get('volume_percent', 50)
-            return {'success': True, 'volume': current_volume, 'cached': False}
-        else:
-            return {'success': True, 'volume': 50, 'cached': False}
+        return {'success': False, 'error': 'No cached volume data', 'volume': 50}
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Get volume error: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': str(e), 'volume': 50}
 
 @app.route('/spotify_search', methods=['POST'])
 @rate_limit(1.0)
