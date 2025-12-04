@@ -319,11 +319,18 @@ def find_touchscreen():
 
 def handle_buttons():
     global START_SCREEN, display_sleeping
+    display_type = config.get("display", {}).get("type", "framebuffer")
+    if display_type == "waveshare_epd":
+        print("Button controls disabled for Waveshare e-paper display")
+        while not exit_event.is_set():
+            time.sleep(1)
+        return
     if not HAS_GPIO:
         print("GPIO not available - button controls disabled")
         while not exit_event.is_set():
             time.sleep(1)
         return
+    GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
     buttons = [BUTTON_A, BUTTON_B, BUTTON_X, BUTTON_Y]
     for button in buttons:
@@ -369,6 +376,12 @@ def handle_buttons():
 
 def handle_touch():
     global START_SCREEN
+    display_type = config.get("display", {}).get("type", "framebuffer")
+    if display_type == "waveshare_epd":
+        print("Touch controls disabled for Waveshare e-paper display")
+        while not exit_event.is_set():
+            time.sleep(1)
+        return
     device = find_touchscreen()
     if device is None:
         while not exit_event.is_set():
@@ -2281,29 +2294,45 @@ def update_weather_icon(weather_info):
 # ============== CONFIG LOADING AND INITIALIZATION ==============
 
 config = load_config()
-if config["display"]["type"] == "waveshare_epd":
+HAS_WAVESHARE_EPD = False
+HAS_ST7789 = False
+HAS_GPIO = False
+EPD = None
+display_type = config.get("display", {}).get("type", "framebuffer")
+if display_type == "waveshare_epd":
     try:
         from waveshare_epd.epd2in13_V3 import EPD
         HAS_WAVESHARE_EPD = True
-    except ImportError:
+        print("Waveshare EPD module loaded successfully")
+        print("Note: GPIO buttons and touch are disabled for e-paper display")
+    except ImportError as e:
+        print(f"Waveshare EPD import failed (module not found): {e}")
         HAS_WAVESHARE_EPD = False
         EPD = None
+    except Exception as e:
+        print(f"Waveshare EPD import failed: {e}")
+        HAS_WAVESHARE_EPD = False
+        EPD = None
+    HAS_GPIO = False
 else:
-    HAS_WAVESHARE_EPD = False
-HAS_ST7789 = False
-HAS_GPIO = False
-if config["display"]["type"] == "st7789":
     try:
         import RPi.GPIO as GPIO
         HAS_GPIO = True
+        print("RPi.GPIO loaded for button controls")
     except ImportError:
+        print("RPi.GPIO not available - button controls will be disabled")
         HAS_GPIO = False
-    try:
-        import st7789
-        HAS_ST7789 = True
-    except ImportError:
-        HAS_ST7789 = False
-display_type = config.get("display", {}).get("type", "framebuffer")
+    except Exception as e:
+        print(f"GPIO import failed: {e}")
+        HAS_GPIO = False
+    if display_type == "st7789":
+        try:
+            import st7789
+            HAS_ST7789 = True
+            print("ST7789 module loaded successfully")
+        except ImportError:
+            print("ST7789 module not found")
+            HAS_ST7789 = False
 if display_type == "st7789":
     ANIMATION_FPS = 30
     TEXT_SCROLL_FPS = 30
@@ -2367,6 +2396,14 @@ def main():
         "spotify": 0.5,
         "time": 1.0
     }
+    display_type = config.get("display", {}).get("type", "framebuffer")
+    if display_type == "waveshare_epd":
+        screen_update_intervals = {
+            "weather": 30.0,
+            "spotify": 0.1,
+            "time": 1.0 
+        }
+        print("E-paper display detected - using slower refresh rates")
     last_display_update = 0
     try:
         while not exit_event.is_set():
@@ -2380,26 +2417,42 @@ def main():
         print("\nShutting down...")
     finally:
         print("Starting cleanup...")
-        original_screen = START_SCREEN
-        START_SCREEN = "spotify"
-        spotify_track = None
-        update_spotify_layout(None)
-        try:
-            update_display()
-            time.sleep(0.3)
-        except:
-            pass
-        cleanup_scroll_state()
         exit_event.set()
         time.sleep(0.5)
-        clear_framebuffer()
-        if HAS_GPIO:
+        display_type = config.get("display", {}).get("type", "framebuffer")
+        if display_type == "waveshare_epd":
+            if waveshare_epd is not None:
+                try:
+                    print("Putting Waveshare display to sleep...")
+                    waveshare_epd.init()
+                    waveshare_epd.Clear(0xFF)
+                    waveshare_epd.sleep()
+                    print("Waveshare display cleaned up")
+                except Exception as e:
+                    print(f"Waveshare cleanup error: {e}")
+        elif display_type == "st7789":
+            if st7789_display is not None:
+                try:
+                    black_img = Image.new("RGB", (320, 240), "black")
+                    st7789_display.display(black_img)
+                    print("ST7789 display cleared")
+                except Exception as e:
+                    print(f"ST7789 cleanup error: {e}")
+        else:
+            clear_framebuffer()
+        if HAS_GPIO and display_type != "waveshare_epd":
             try:
+                GPIO.setwarnings(False)
                 GPIO.cleanup()
+                print("GPIO cleaned up")
+            except Exception as e:
+                print(f"GPIO cleanup error: {e}")
+        cleanup_scroll_state()
+        if process_executor:
+            try:
+                process_executor.shutdown(wait=False)
             except:
                 pass
-        if process_executor:
-            process_executor.shutdown(wait=False)
         print("Cleanup complete")
 
 if __name__ == "__main__":
