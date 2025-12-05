@@ -744,7 +744,9 @@ def display_image_on_waveshare(image):
             if image.mode != '1':
                 image = image.convert('1')
             content_changed = getattr(image, 'content_changed', True)
-            if content_changed or partial_refresh_count >= 300:
+            if content_changed:
+                waveshare_epd.init()
+                waveshare_epd.Clear(0xFF)
                 waveshare_epd.display(waveshare_epd.getbuffer(image))
                 waveshare_base_image = image.copy()
                 partial_refresh_count = 0
@@ -830,9 +832,22 @@ def draw_waveshare(weather_info, spotify_track):
         font_medium = ImageFont.load_default()
         font_large = ImageFont.load_default()
     content_changed = False
-    current_track_id = None
+    current_track_id = ""
     if spotify_track:
         current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
+    current_weather_id = ""
+    if weather_info:
+        current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
+    if not hasattr(draw_waveshare, 'last_track_id'):
+        draw_waveshare.last_track_id = ""
+        draw_waveshare.last_weather_id = ""
+        content_changed = True
+    if current_track_id != draw_waveshare.last_track_id:
+        content_changed = True
+        draw_waveshare.last_track_id = current_track_id
+        if hasattr(draw_waveshare, 'title_scroll_offset'):
+            draw_waveshare.title_scroll_offset = 0
+            draw_waveshare.artist_scroll_offset = 0
     current_weather_id = None
     if weather_info:
         current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
@@ -843,6 +858,9 @@ def draw_waveshare(weather_info, spotify_track):
     if current_track_id != draw_waveshare.last_track_id:
         content_changed = True
         draw_waveshare.last_track_id = current_track_id
+        if hasattr(draw_waveshare, 'title_scroll_offset'):
+            draw_waveshare.title_scroll_offset = 0
+            draw_waveshare.artist_scroll_offset = 0
     if current_weather_id != draw_waveshare.last_weather_id:
         content_changed = True
         draw_waveshare.last_weather_id = current_weather_id
@@ -911,6 +929,57 @@ def draw_waveshare(weather_info, spotify_track):
     clock_y = display_height - time_height - 8
     draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
     img.content_changed = content_changed
+    return img
+
+def draw_waveshare_sleep_screen():
+    display_width = 250
+    display_height = 122
+    img = Image.new('1', (display_width, display_height), 255)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
+    try:
+        font_time = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+        font_date = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        font_weather = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        font_weather_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except:
+        font_time = ImageFont.load_default()
+        font_date = ImageFont.load_default()
+        font_weather = ImageFont.load_default()
+        font_weather_small = ImageFont.load_default()
+    now = datetime.datetime.now()
+    time_str = now.strftime("%H:%M")
+    time_bbox = draw.textbbox((0, 0), time_str, font=font_time)
+    time_width = time_bbox[2] - time_bbox[0]
+    time_height = time_bbox[3] - time_bbox[1]
+    time_x = (display_width - time_width) // 2
+    time_y = (display_height - time_height) // 2 - 10
+    draw.text((time_x, time_y), time_str, font=font_time, fill=0)
+    date_str = now.strftime("%a, %b %d")
+    date_bbox = draw.textbbox((0, 0), date_str, font=font_date)
+    date_width = date_bbox[2] - date_bbox[0]
+    date_x = (display_width - date_width) // 2
+    date_y = time_y + time_height + 5
+    draw.text((date_x, date_y), date_str, font=font_date, fill=0)
+    if weather_info and OPENWEATHER_API_KEY:
+        weather_x = 5
+        temp_text = f"{weather_info['temp']}°C"
+        temp_bbox = draw.textbbox((0, 0), temp_text, font=font_weather)
+        temp_height = temp_bbox[3] - temp_bbox[1]
+        temp_y = display_height - temp_height - 5
+        draw.text((weather_x, temp_y), temp_text, font=font_weather, fill=0)
+        desc_text = weather_info['description']
+        desc_bbox = draw.textbbox((0, 0), desc_text, font=font_weather_small)
+        desc_height = desc_bbox[3] - desc_bbox[1]
+        desc_y = temp_y - desc_height - 2
+        draw.text((weather_x, desc_y), desc_text, font=font_weather_small, fill=0)
+        if "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
+            try:
+                icon_y = desc_y - 35
+                img.paste(weather_info["cached_icon"], (weather_x, icon_y))
+            except Exception as e:
+                print(f"Error pasting weather icon: {e}")
+    img.content_changed = False
     return img
 
 def draw_text_aliased(draw, image, position, text, font, fill):
@@ -1498,9 +1567,29 @@ def get_location_via_openweathermap_geocoding(api_key, city_name):
 
 def sleep_monitor_loop():
     last_sleep_check = 0
+    last_waveshare_update = 0
+    waveshare_update_interval = 15
+    first_sleep_update = True
     while not exit_event.is_set():
         current_time = time.time()
         if display_sleeping:
+            if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+                if current_time - last_waveshare_update >= waveshare_update_interval:
+                    sleep_img = draw_waveshare_sleep_screen()
+                    with waveshare_lock:
+                        if waveshare_epd is not None:
+                            if first_sleep_update:
+                                first_sleep_update = False
+                            elif waveshare_base_image is not None:
+                                try:
+                                    sleep_img.content_changed = False
+                                    waveshare_epd.displayPartial(waveshare_epd.getbuffer(sleep_img))
+                                except Exception as e:
+                                    print(f"Partial refresh failed, falling back to full refresh: {e}")
+                                    waveshare_epd.init()
+                                    waveshare_epd.Clear(0xFF)
+                                    waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                    last_waveshare_update = current_time
             if current_time - last_sleep_check >= WAKEUP_CHECK_INTERVAL:
                 check_sleep_state()
                 last_sleep_check = current_time
@@ -1512,6 +1601,10 @@ def sleep_monitor_loop():
 
 def spotify_loop():
     global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache, last_art_url, last_api_call, consecutive_no_track_count
+    global last_queue_data, last_queue_update
+    last_queue_data = []
+    last_queue_update = 0
+    QUEUE_UPDATE_INTERVAL = 10
     last_successful_write = 0
     write_interval = 0.5
     last_api_call = 0
@@ -1530,7 +1623,7 @@ def spotify_loop():
         current_check_interval = calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track)
         time_since_last_api = current_time - last_api_call
         if time_since_last_api < current_check_interval:
-            time.sleep(0.5)
+            time.sleep(1)
             continue
         try:
             last_api_call = current_time
@@ -1538,8 +1631,60 @@ def spotify_loop():
             api_error_count = 0
             if not track or not track.get('item'):
                 last_successful_write = handle_no_track_playing(current_time, last_successful_write, write_interval)
+                if current_time - last_queue_update > QUEUE_UPDATE_INTERVAL:
+                    write_current_track_state(None, [], track)
+                    last_queue_update = current_time
                 continue
-            last_successful_write, last_track_id, is_first_track_after_startup = handle_track_update(current_time, last_successful_write, write_interval, track, last_track_id, is_first_track_after_startup, previous_track_id)
+            last_successful_write, last_track_id, is_first_track_after_startup = handle_track_update(
+                current_time, last_successful_write, write_interval, track, 
+                last_track_id, is_first_track_after_startup, previous_track_id
+            )
+            track_changed = track['item'].get('id') != last_track_id or spotify_track is None
+            should_update_queue = (
+                (current_time - last_queue_update > QUEUE_UPDATE_INTERVAL) or 
+                track_changed or
+                not last_queue_data
+            )
+            if should_update_queue:
+                try:
+                    queue = sp.queue()
+                    queue_tracks = []
+                    if track and track.get('item'):
+                        current_track_item = track['item']
+                        current_artists = ', '.join([artist['name'] for artist in current_track_item.get('artists', [])])
+                        current_image_url = None
+                        if (current_track_item.get('album') and 
+                            current_track_item['album'].get('images')):
+                            current_image_url = current_track_item['album']['images'][-1]['url']
+                        queue_tracks.append({
+                            'name': current_track_item.get('name', 'Unknown Track'),
+                            'artists': current_artists,
+                            'album': current_track_item.get('album', {}).get('name', 'Unknown Album'),
+                            'uri': current_track_item.get('uri', ''),
+                            'image_url': current_image_url,
+                            'is_current': True
+                        })
+                    if queue and 'queue' in queue:
+                        for queue_track in queue['queue']:
+                            artists = ', '.join([artist['name'] for artist in queue_track.get('artists', [])])
+                            image_url = None
+                            if (queue_track.get('album') and 
+                                queue_track['album'].get('images')):
+                                image_url = queue_track['album']['images'][-1]['url']
+                            queue_tracks.append({
+                                'name': queue_track.get('name', ''),
+                                'artists': artists,
+                                'album': queue_track.get('album', {}).get('name', ''),
+                                'uri': queue_track.get('uri', ''),
+                                'image_url': image_url,
+                                'is_current': False
+                            })
+                    last_queue_data = queue_tracks
+                    last_queue_update = current_time
+                    write_current_track_state(spotify_track, queue_tracks, track)
+                except Exception as e:
+                    print(f"Error fetching queue: {e}")
+                    write_current_track_state(spotify_track, last_queue_data, track)
         except spotipy.exceptions.SpotifyException as e:
             api_error_count += 1
             if not handle_spotify_api_errors(e, api_error_count):
@@ -1616,18 +1761,52 @@ def signal_handler(sig, frame):
 
 def go_to_sleep():
     global display_sleeping, last_display_time
-    if not display_sleeping:
-        display_sleeping = True
-        try:
-            if display_type == "st7789" and HAS_ST7789 and st7789_display:
-                black_img = Image.new("RGB", (320, 240), "black")
-                with st7789_lock:
-                    st7789_display.display(black_img)
-            time.sleep(0.05)
-        except:
-            pass
+    if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+        go_to_sleep_waveshare()
+    else:
+        if not display_sleeping:
+            display_sleeping = True
+            try:
+                if display_type == "st7789" and HAS_ST7789 and st7789_display:
+                    black_img = Image.new("RGB", (320, 240), "black")
+                    with st7789_lock:
+                        st7789_display.display(black_img)
+                time.sleep(0.05)
+            except:
+                pass
+            last_display_time = 0
+            clear_framebuffer()
+
+def go_to_sleep_waveshare():
+    global display_sleeping, last_display_time, waveshare_epd
+    if display_sleeping:
+        return
+    display_sleeping = True
+    try:
+        sleep_img = draw_waveshare_sleep_screen()
+        with waveshare_lock:
+            if waveshare_epd is None:
+                if not init_waveshare_display():
+                    print("Failed to initialize Waveshare for sleep mode")
+                    return
+            try:
+                waveshare_epd.init()
+                waveshare_epd.Clear(0xFF)
+                waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                waveshare_base_image = sleep_img.copy()
+            except Exception as e:
+                print(f"Error displaying Waveshare sleep screen: {e}")
+                try:
+                    waveshare_epd.init()
+                    waveshare_epd.Clear(0xFF)
+                    waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                    waveshare_base_image = sleep_img.copy()
+                except Exception as e2:
+                    print(f"Waveshare sleep fallback also failed: {e2}")
         last_display_time = 0
-        clear_framebuffer()
+    except Exception as e:
+        print(f"Critical error in Waveshare sleep mode: {e}")
+        display_sleeping = True
 
 # ============== PREPARE FUNCTIONS ==============
 
@@ -1643,25 +1822,22 @@ def prepare_track_data(track):
     artists_list = [artist['name'] for artist in item.get('artists', [])]
     artist_str = ", ".join(artists_list) if artists_list else "Unknown Artist"
     album_str = item['album']['name'] if item.get('album') else "Unknown Album"
-    current_position = track.get('progress_ms', 0) // 1000
-    duration = item.get('duration_ms', 0) // 1000
-    is_playing = track.get('is_playing', False)
-    shuffle_state = track.get('shuffle_state', False)
     device = track.get('device', {})
-    volume_percent = device.get('volume_percent', 50) if device else 50
     device_name = device.get('name', '') if device else ''
     device_active = device is not None
+    volume_percent = device.get('volume_percent', 50) if device else 50
     return {
         "title": item.get('name', "Unknown Track"),
         "artists": artist_str,
         "album": album_str,
-        "current_position": current_position,
-        "duration": duration,
-        "is_playing": is_playing,
-        "shuffle_state": shuffle_state,
+        "current_position": track.get('progress_ms', 0) // 1000,
+        "duration": item.get('duration_ms', 0) // 1000,
+        "is_playing": track.get('is_playing', False),
+        "shuffle_state": track.get('shuffle_state', False),
         "volume_percent": volume_percent,
         "device_name": device_name,
-        "device_active": device_active
+        "device_active": device_active,
+        "track_id": item.get('id')
     }
 
 def prepare_track_state_data(track_data):
@@ -1750,6 +1926,20 @@ def prepare_weather_state_data(weather_data):
 
 def check_sleep_state():
     global display_sleeping, START_SCREEN
+    if display_type == "waveshare_epd":
+        if START_SCREEN != "spotify":
+            if display_sleeping:
+                wake_up_display()
+            return
+        current_time = time.time()
+        music_playing = spotify_track and spotify_track.get('is_playing', False)
+        if display_sleeping:
+            if music_playing:
+                wake_up_display()
+        else:
+            if not music_playing and current_time - last_activity_time >= SLEEP_TIMEOUT:
+                go_to_sleep()
+        return
     if START_SCREEN != "spotify":
         if display_sleeping:
             wake_up_display()
@@ -1765,14 +1955,26 @@ def check_sleep_state():
 
 def go_to_sleep():
     global display_sleeping, last_display_time
-    if not display_sleeping:
+    if display_sleeping:
+        return
+    if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+        go_to_sleep_waveshare()
+    else:
         display_sleeping = True
-        time.sleep(0.05)
+        try:
+            if display_type == "st7789" and HAS_ST7789 and st7789_display:
+                black_img = Image.new("RGB", (320, 240), "black")
+                with st7789_lock:
+                    st7789_display.display(black_img)
+            time.sleep(0.05)
+        except Exception as e:
+            print(f"Error during sleep transition: {e}")
         last_display_time = 0
-        clear_framebuffer()
+        if display_type != "waveshare_epd":
+            clear_framebuffer()
 
 def wake_up_display():
-    global display_sleeping
+    global display_sleeping, first_sleep_update
     if display_sleeping:
         display_sleeping = False
         update_activity()
@@ -1807,14 +2009,14 @@ def authenticate_spotify_interactive():
 
 def calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track):
     if api_error_count > 0:
-        return min(10 * (2 ** min(api_error_count-1, 2)), 60)
+        return min(30 * (2 ** min(api_error_count-1, 2)), 60)
     elif spotify_track and spotify_track.get('is_playing', False):
-        return 2
+        return 3
     else:
         if consecutive_no_track_count >= max_consecutive_no_track:
             return 30
         else:
-            return 2
+            return 3
 
 def fetch_album_art_with_retry(art_url, max_retries=2):
     for art_attempt in range(max_retries):
@@ -1997,6 +2199,7 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
         old_playing_state = spotify_track.get('is_playing', False) if spotify_track else False
         spotify_track['current_position'] = new_track['current_position']
         spotify_track['is_playing'] = new_track['is_playing']
+        spotify_track['shuffle_state'] = new_track['shuffle_state']        
         playing_state_changed = new_track['is_playing'] != old_playing_state
         if playing_state_changed and new_track['is_playing']:
             update_activity()
@@ -2165,21 +2368,82 @@ def validate_and_write_toml(data, temp_path, final_path):
                 pass
     return False
 
-def write_current_track_state(track_data):
+def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
     if not ENABLE_CURRENT_TRACK_DISPLAY:
         return
     with file_write_lock:
         try:
-            state_data = prepare_track_state_data(track_data)
-            for key, value in state_data['current_track'].items():
-                if value is None:
-                    state_data['current_track'][key] = ""
-                elif isinstance(value, str) and '\n' in value:
-                    state_data['current_track'][key] = value.replace('\n', ' ')
+            existing_queue = []
+            if os.path.exists('.current_track_state.toml'):
+                try:
+                    existing_state = toml.load('.current_track_state.toml')
+                    existing_queue = existing_state.get('queue', [])
+                except:
+                    pass
+            state_data = {}
+            if track_data:
+                volume = track_data.get('volume_percent', 50)
+                device_name = track_data.get('device_name', '')
+                device_active = track_data.get('device_active', False)
+                if raw_track_data and 'device' in raw_track_data:
+                    device = raw_track_data.get('device', {})
+                    if device:
+                        volume = device.get('volume_percent', volume)
+                        device_name = device.get('name', device_name)
+                        device_active = True
+                state_data['current_track'] = {
+                    'title': track_data.get('title', 'Unknown Track') or "Unknown Track",
+                    'artists': track_data.get('artists', 'Unknown Artist') or "Unknown Artist",
+                    'album': track_data.get('album', 'Unknown Album') or "Unknown Album",
+                    'current_position': int(track_data.get('current_position', 0)),
+                    'duration': int(track_data.get('duration', 0)),
+                    'is_playing': bool(track_data.get('is_playing', False)),
+                    'timestamp': time.time(),
+                    'shuffle_state': bool(track_data.get('shuffle_state', False)),
+                    'volume_percent': int(volume),
+                    'device_name': device_name,
+                    'device_active': bool(device_active)
+                }
+                state_data['device_status'] = {
+                    'has_active_device': bool(device_active),
+                    'device_name': device_name
+                }
+            else:
+                state_data['current_track'] = {
+                    'title': 'No track playing',
+                    'artists': '',
+                    'album': '',
+                    'current_position': 0,
+                    'duration': 0,
+                    'is_playing': False,
+                    'timestamp': time.time(),
+                    'shuffle_state': False,
+                    'volume_percent': 50,
+                    'device_name': '',
+                    'device_active': False
+                }
+                state_data['device_status'] = {
+                    'has_active_device': False,
+                    'device_name': ''
+                }
+            if queue_data is not None:
+                state_data['queue'] = queue_data
+            elif existing_queue:
+                state_data['queue'] = existing_queue
+            else:
+                state_data['queue'] = []
+            for key in ['current_track', 'device_status']:
+                if key in state_data:
+                    for subkey, value in state_data[key].items():
+                        if value is None:
+                            state_data[key][subkey] = ""
+                        elif isinstance(value, str) and '\n' in value:
+                            state_data[key][subkey] = value.replace('\n', ' ')
             temp_path = '.current_track_state.toml.tmp'
+            final_path = '.current_track_state.toml'
             with open(temp_path, 'w', encoding='utf-8') as f:
                 toml.dump(state_data, f)
-            if validate_and_write_toml(state_data, temp_path, '.current_track_state.toml'):
+            if validate_and_write_toml(state_data, temp_path, final_path):
                 return
             fallback_data = {
                 'current_track': {
@@ -2189,10 +2453,16 @@ def write_current_track_state(track_data):
                     'current_position': 0,
                     'duration': 0,
                     'is_playing': False,
-                    'timestamp': time.time()
-                }
+                    'timestamp': time.time(),
+                    'volume_percent': 50
+                },
+                'device_status': {
+                    'has_active_device': False,
+                    'device_name': ''
+                },
+                'queue': existing_queue
             }
-            with open('.current_track_state.toml', 'w', encoding='utf-8') as f:
+            with open(final_path, 'w', encoding='utf-8') as f:
                 toml.dump(fallback_data, f)
         except Exception as e:
             print(f"Critical error writing track state: {e}")
@@ -2205,8 +2475,14 @@ def write_current_track_state(track_data):
                         'current_position': 0,
                         'duration': 0,
                         'is_playing': False,
-                        'timestamp': time.time()
-                    }
+                        'timestamp': time.time(),
+                        'volume_percent': 50
+                    },
+                    'device_status': {
+                        'has_active_device': False,
+                        'device_name': ''
+                    },
+                    'queue': existing_queue if 'existing_queue' in locals() else []
                 }
                 with open('.current_track_state.toml', 'w', encoding='utf-8') as f:
                     toml.dump(basic_data, f)

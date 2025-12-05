@@ -4,3 +4,4 @@ config.toml
 .current_track_state.toml
 song_counts.bin
 screens info.txt
+LCD-show/
