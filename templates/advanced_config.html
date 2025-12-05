@@ -167,17 +167,6 @@
             margin-top: 0;
             color: var(--accent-color);
         }
-        .font-config {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        .font-group {
-            background: var(--bg-secondary);
-            padding: 15px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-        }
         .instructions {
             background: var(--info-bg);
             padding: 15px;
@@ -467,70 +456,6 @@
                         {% endfor %}
                     </select>
                     <small>Choose a different CSS file to change the look and feel of the web interface. Files are loaded dynamically from the <code>static/</code> folder.</small>
-                </div>
-            </div>
-            <div class="section">
-                <h2>▣ Font Configuration</h2>
-                <div class="font-config">
-                    <div class="font-group">
-                        <h3>Main Display Fonts</h3>
-                        <div class="form-group">
-                            <label for="large_font_path">Large Font Path:</label>
-                            <input type="text" id="large_font_path" name="large_font_path" value="{{ config.fonts.large_font_path }}">
-                            <small>Path to large font file</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="large_font_size">Large Font Size:</label>
-                            <input type="number" id="large_font_size" name="large_font_size" value="{{ config.fonts.large_font_size }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="medium_font_path">Medium Font Path:</label>
-                            <input type="text" id="medium_font_path" name="medium_font_path" value="{{ config.fonts.medium_font_path }}">
-                            <small>Path to medium font file</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="medium_font_size">Medium Font Size:</label>
-                            <input type="number" id="medium_font_size" name="medium_font_size" value="{{ config.fonts.medium_font_size }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="small_font_path">Small Font Path:</label>
-                            <input type="text" id="small_font_path" name="small_font_path" value="{{ config.fonts.small_font_path }}">
-                            <small>Path to small font file</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="small_font_size">Small Font Size:</label>
-                            <input type="number" id="small_font_size" name="small_font_size" value="{{ config.fonts.small_font_size }}">
-                        </div>
-                    </div>
-                    <div class="font-group">
-                        <h3>Spotify Display Fonts</h3>
-                        <div class="form-group">
-                            <label for="spot_large_font_path">Spotify Large Font Path:</label>
-                            <input type="text" id="spot_large_font_path" name="spot_large_font_path" value="{{ config.fonts.spot_large_font_path }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="spot_large_font_size">Spotify Large Font Size:</label>
-                            <input type="number" id="spot_large_font_size" name="spot_large_font_size" value="{{ config.fonts.spot_large_font_size }}">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="spot_medium_font_path">Spotify Medium Font Path:</label>
-                            <input type="text" id="spot_medium_font_path" name="spot_medium_font_path" value="{{ config.fonts.spot_medium_font_path }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="spot_medium_font_size">Spotify Medium Font Size:</label>
-                            <input type="number" id="spot_medium_font_size" name="spot_medium_font_size" value="{{ config.fonts.spot_medium_font_size }}">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="spot_small_font_path">Spotify Small Font Path:</label>
-                            <input type="text" id="spot_small_font_path" name="spot_small_font_path" value="{{ config.fonts.spot_small_font_path }}">
-                        </div>
-                        <div class="form-group">
-                            <label for="spot_small_font_size">Spotify Small Font Size:</label>
-                            <input type="number" id="spot_small_font_size" name="spot_small_font_size" value="{{ config.fonts.spot_small_font_size }}">
-                        </div>
-                    </div>
                 </div>
             </div>
             <div class="section">

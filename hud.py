@@ -22,6 +22,22 @@ CLOCK_TYPE = "analog"
 CLOCK_BACKGROUND = "color"
 CLOCK_COLOR = "black"
 INTERNET_CHECK_INTERVAL = 120
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(SCRIPT_DIR, "static", "font", "mx_univga.ttf")
+FONT_PATH_BOLD = os.path.join(SCRIPT_DIR, "static", "font", "mx_univga.ttf")
+LARGE_FONT = ImageFont.truetype(FONT_PATH_BOLD, 32)
+MEDIUM_FONT = ImageFont.truetype(FONT_PATH, 20)
+SMALL_FONT = ImageFont.truetype(FONT_PATH, 10)
+SPOT_LARGE_FONT = ImageFont.truetype(FONT_PATH_BOLD, 20)
+SPOT_MEDIUM_FONT = ImageFont.truetype(FONT_PATH, 12)
+SPOT_SMALL_FONT = ImageFont.truetype(FONT_PATH, 8)
+WAVESHARE_FONT_SMALL = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_MEDIUM = ImageFont.truetype(FONT_PATH_BOLD, 18)
+WAVESHARE_FONT_LARGE = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_TIME = ImageFont.truetype(FONT_PATH_BOLD, 32)
+WAVESHARE_FONT_DATE = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_WEATHER = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_WEATHER_SMALL = ImageFont.truetype(FONT_PATH_BOLD, 16)
 process_executor = None
 frame_hash_cache = {}
 frame_hash_cache_size = 50
@@ -39,20 +55,6 @@ DEFAULT_CONFIG = {
             "rotation": 0,
             "spi_speed": 60000000
         }
-    },
-    "fonts": {
-        "large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "large_font_size": 36,
-        "medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "medium_font_size": 24,
-        "small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "small_font_size": 16,
-        "spot_large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "spot_large_font_size": 26,
-        "spot_medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_medium_font_size": 18,
-        "spot_small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_small_font_size": 12
     },
     "api_keys": {
         "openweather": "",
@@ -823,14 +825,9 @@ def draw_waveshare(weather_info, spotify_track):
     img = Image.new('1', (display_width, display_height), 255)
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
-    try:
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
-        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-    except:
-        font_small = ImageFont.load_default()
-        font_medium = ImageFont.load_default()
-        font_large = ImageFont.load_default()
+    font_small = WAVESHARE_FONT_SMALL
+    font_medium = WAVESHARE_FONT_MEDIUM
+    font_large = WAVESHARE_FONT_LARGE
     content_changed = False
     current_track_id = ""
     if spotify_track:
@@ -937,16 +934,10 @@ def draw_waveshare_sleep_screen():
     img = Image.new('1', (display_width, display_height), 255)
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
-    try:
-        font_time = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
-        font_date = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-        font_weather = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-        font_weather_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-    except:
-        font_time = ImageFont.load_default()
-        font_date = ImageFont.load_default()
-        font_weather = ImageFont.load_default()
-        font_weather_small = ImageFont.load_default()
+    font_time = ImageFont.truetype(FONT_PATH_BOLD, 32)
+    font_date = ImageFont.truetype(FONT_PATH_BOLD, 18)
+    font_weather = ImageFont.truetype(FONT_PATH_BOLD, 18)
+    font_weather_small = ImageFont.truetype(FONT_PATH_BOLD, 16)
     now = datetime.datetime.now()
     time_str = now.strftime("%H:%M")
     time_bbox = draw.textbbox((0, 0), time_str, font=font_time)
