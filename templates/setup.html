@@ -696,14 +696,24 @@
                 console.error('Error fetching initial track:', error);
             });
         const volumeSlider = document.getElementById('volumeSlider');
-        if (volumeSlider) {
-            getCurrentVolume().then(currentVolume => {
-                volumeSlider.value = currentVolume;
-                const volumeValue = document.getElementById('volumeValue');
-                if (volumeValue) {
-                    volumeValue.textContent = currentVolume + '%';
-                }
-            });
+        const volumeValue = document.getElementById('volumeValue');
+        if (volumeSlider && volumeValue) {
+            volumeSlider.value = 50;
+            volumeValue.textContent = '50%';
+            let volumeAttempts = 0;
+            const maxVolumeAttempts = 3;
+            function tryGetVolume() {
+                getCurrentVolume().then(currentVolume => {
+                    if (currentVolume !== null && currentVolume !== undefined) {
+                        volumeSlider.value = currentVolume;
+                        volumeValue.textContent = currentVolume + '%';
+                    } else if (volumeAttempts < maxVolumeAttempts) {
+                        volumeAttempts++;
+                        setTimeout(tryGetVolume, 2000);
+                    }
+                });
+            }
+            tryGetVolume();
         }
     }
     setInterval(checkAndUpdateDeviceStatus, 1000);
@@ -1072,10 +1082,18 @@
         return fetch('/spotify_get_volume')
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (data.success && typeof data.volume === 'number') {
                     return data.volume;
                 }
-                return 50;
+                return fetch('/api/current_track')
+                    .then(resp => resp.json())
+                    .then(trackData => {
+                        if (trackData && trackData.track) {
+                            return 50;
+                        }
+                        return 50;
+                    })
+                    .catch(() => 50);
             })
             .catch(error => {
                 console.error('Error getting volume:', error);
@@ -1204,6 +1222,7 @@
             })
             .catch(error => {
                 console.error('Volume control error:', error);
+                // Revert to actual volume on error
                 getCurrentVolume().then(currentVol => {
                     const volumeSlider = document.getElementById('volumeSlider');
                     const volumeValue = document.getElementById('volumeValue');

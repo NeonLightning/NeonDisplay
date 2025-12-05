@@ -443,6 +443,14 @@
         </div>
     </div>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('searchInput').focus();
+            loadQueue();
+            setTimeout(() => {
+                loadShuffleState();
+            }, 1500);
+            setInterval(loadQueue, 3000);
+        });
         let lastRequestTime = 0;
         let isRequestInProgress = false;
         function getRateLimitForAction(action) {
@@ -524,7 +532,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ uri: trackUri }) 
+                body: JSON.stringify({ track_uri: trackUri }) 
             })
             .then(response => response.json())
             .then(data => {
@@ -553,7 +561,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ uri: trackUri })
+                body: JSON.stringify({ track_uri: trackUri })
             })
             .then(response => response.json())
             .then(data => {
@@ -581,7 +589,9 @@
                         data.queue.forEach((track, index) => {
                             const itemClass = track.is_current ? 'queue-item current' : 'queue-item';
                             queueHTML += `
-                                <div class="${itemClass}">
+                                <div class="${itemClass}" onclick="playQueueTrack('${track.uri.replace(/'/g, "\\'")}', '${track.name.replace(/'/g, "\\'")}')" 
+                                    style="cursor: pointer; ${track.is_current ? 'cursor: default;' : ''}"
+                                    title="${track.is_current ? 'Currently playing' : 'Click to play this track'}">
                                     ${track.image_url ? 
                                         `<img src="${track.image_url}" class="queue-art" alt="${track.album}">` :
                                         `<div class="queue-art-placeholder">${track.is_current ? '▶' : '♪'}</div>`
@@ -616,6 +626,53 @@
                         </div>
                     `;
                 });
+        }
+        function playQueueTrack(trackUri, trackName, isCurrentTrack = false) {
+            if (isCurrentTrack) {
+                showStatus(`"${trackName}" is already playing`, 'info');
+                return;
+            }
+            if (!canMakeRequest('play')) {
+                showStatus('Please wait before playing another track', 'error');
+                return;
+            }
+            console.log("Playing queue track (skip to):", trackUri, trackName);
+            showStatus(`Skipping to "${trackName}"...`, 'info');
+            fetch('/spotify_skip_to_track', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    track_uri: trackUri,
+                    track_name: trackName
+                })
+            })
+            .then(response => {
+                console.log("Response status:", response.status);
+                return response.json().then(data => {
+                    return { ok: response.ok, data: data };
+                });
+            })
+            .then(({ ok, data }) => {
+                console.log("Response data:", data);
+                if (ok && data.success) {
+                    showStatus(`Now playing "${trackName}"!`, 'success');
+                    setTimeout(() => {
+                        loadQueue();
+                    }, 1000);
+                } else {
+                    let errorMsg = data.error || 'Unknown error';
+                    showStatus('Failed: ' + errorMsg, 'error');
+                }
+            })
+            .catch(error => {
+                console.error("Network error:", error);
+                showStatus('Network error: ' + error.message, 'error');
+            })
+            .finally(() => {
+                completeRequest();
+            });
         }
         function performPlaylistSearch() {
             const query = document.getElementById('playlistInput').value.trim();
@@ -701,27 +758,47 @@
             const btn = document.getElementById('shuffleBtn');
             if (!btn) return;
             const currentState = parseInt(btn.dataset.state, 10);
-            const nextState = (currentState + 1) % 2; 
-            const newApiState = nextState === 1; 
-            updateShuffleButtonVisuals(nextState, true); 
-            showStatus(`Toggling shuffle to ${newApiState ? 'ON' : 'OFF'}...`, 'info');
-            fetch('/spotify_toggle_shuffle', {
+            btn.disabled = true;
+            updateShuffleButtonVisuals(currentState, true);
+            showStatus('Toggling shuffle...', 'info');
+            fetch('/spotify_shuffle_toggle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: newApiState })
+                body: JSON.stringify({})
             })
             .then(response => response.json())
             .then(data => {
+                btn.disabled = false;
                 if (data.success) {
                     showStatus(data.message, 'success');
-                    updateShuffleButtonVisuals(data.new_state ? 1 : 0, false);
+                    const newState = data.requested_state !== undefined ? data.requested_state : (currentState === 0 ? 1 : 0);
+                    updateShuffleButtonVisuals(newState ? 1 : 0, false);
+                    setTimeout(() => {
+                        loadQueue();
+                        loadShuffleState();
+                    }, 500);
+                    setTimeout(() => {
+                        loadQueue();
+                        loadShuffleState();
+                    }, 2000);
+                    setTimeout(() => {
+                        loadQueue();
+                        loadShuffleState();
+                    }, 4000);
                 } else {
-                    showStatus('Shuffle failed: ' + data.error + '. Resetting button.', 'error');
-                    loadShuffleState(); 
+                    showStatus('Failed: ' + data.error, 'error');
+                    const statusDiv = document.getElementById('searchStatus');
+                    clearTimeout(statusDiv.timer);
+                    statusDiv.timer = setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 8000);
+                    btn.disabled = false;
+                    loadShuffleState();
                 }
             })
             .catch(error => {
-                showStatus('Shuffle error: ' + error, 'error');
+                showStatus('Error: ' + error.message, 'error');
+                btn.disabled = false;
                 loadShuffleState();
             });
         }
@@ -744,33 +821,25 @@
             form.submit();
         }
         function loadShuffleState() {
+            const btn = document.getElementById('shuffleBtn');
+            if (!btn) return;
             fetch('/spotify_get_shuffle_state')
-            .then(response => response.json())
-            .then(data => {
-                const initialState = data.is_shuffling ? 1 : 0;
-                updateShuffleButtonVisuals(initialState, false);
-            })
-            .catch(error => {
-                console.error("Could not load shuffle state:", error);
-                updateShuffleButtonVisuals(0, false);
-            });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const shuffleState = data.is_shuffling !== undefined ? data.is_shuffling : false;
+                        console.log("Shuffle state fetched:", shuffleState ? "ON" : "OFF");
+                        updateShuffleButtonVisuals(shuffleState ? 1 : 0, false);
+                    } else {
+                        console.warn("Shuffle state fetch returned success=false:", data.error);
+                        updateShuffleButtonVisuals(0, false);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error loading shuffle state:", error);
+                    updateShuffleButtonVisuals(0, false);
+                });
         }
-        document.getElementById('searchInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                performSearch();
-            }
-        });
-        document.getElementById('playlistInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                performPlaylistSearch();
-            }
-        });
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('searchInput').focus();
-            loadQueue();
-            loadShuffleState();
-            setInterval(loadQueue, 10000);
-        });
+        setInterval(loadShuffleState, 1500);
     </script>
-</body>
 </html>
