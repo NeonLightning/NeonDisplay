@@ -744,7 +744,9 @@ def display_image_on_waveshare(image):
             if image.mode != '1':
                 image = image.convert('1')
             content_changed = getattr(image, 'content_changed', True)
-            if content_changed or partial_refresh_count >= 300:
+            if content_changed:
+                waveshare_epd.init()
+                waveshare_epd.Clear(0xFF)
                 waveshare_epd.display(waveshare_epd.getbuffer(image))
                 waveshare_base_image = image.copy()
                 partial_refresh_count = 0
@@ -830,9 +832,22 @@ def draw_waveshare(weather_info, spotify_track):
         font_medium = ImageFont.load_default()
         font_large = ImageFont.load_default()
     content_changed = False
-    current_track_id = None
+    current_track_id = ""
     if spotify_track:
         current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
+    current_weather_id = ""
+    if weather_info:
+        current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
+    if not hasattr(draw_waveshare, 'last_track_id'):
+        draw_waveshare.last_track_id = ""
+        draw_waveshare.last_weather_id = ""
+        content_changed = True
+    if current_track_id != draw_waveshare.last_track_id:
+        content_changed = True
+        draw_waveshare.last_track_id = current_track_id
+        if hasattr(draw_waveshare, 'title_scroll_offset'):
+            draw_waveshare.title_scroll_offset = 0
+            draw_waveshare.artist_scroll_offset = 0
     current_weather_id = None
     if weather_info:
         current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}_{weather_info.get('description', '')}"
@@ -843,6 +858,9 @@ def draw_waveshare(weather_info, spotify_track):
     if current_track_id != draw_waveshare.last_track_id:
         content_changed = True
         draw_waveshare.last_track_id = current_track_id
+        if hasattr(draw_waveshare, 'title_scroll_offset'):
+            draw_waveshare.title_scroll_offset = 0
+            draw_waveshare.artist_scroll_offset = 0
     if current_weather_id != draw_waveshare.last_weather_id:
         content_changed = True
         draw_waveshare.last_weather_id = current_weather_id
@@ -1700,7 +1718,7 @@ def prepare_track_data(track):
     artist_str = ", ".join(artists_list) if artists_list else "Unknown Artist"
     album_str = item['album']['name'] if item.get('album') else "Unknown Album"
     device = track.get('device', {})
-    device_name = device.get('name', '')
+    device_name = device.get('name', '') if device else ''
     device_active = device is not None
     volume_percent = device.get('volume_percent', 50) if device else 50
     return {
@@ -2050,6 +2068,7 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
         old_playing_state = spotify_track.get('is_playing', False) if spotify_track else False
         spotify_track['current_position'] = new_track['current_position']
         spotify_track['is_playing'] = new_track['is_playing']
+        spotify_track['shuffle_state'] = new_track['shuffle_state']        
         playing_state_changed = new_track['is_playing'] != old_playing_state
         if playing_state_changed and new_track['is_playing']:
             update_activity()
@@ -2223,8 +2242,24 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
         return
     with file_write_lock:
         try:
+            existing_queue = []
+            if os.path.exists('.current_track_state.toml'):
+                try:
+                    existing_state = toml.load('.current_track_state.toml')
+                    existing_queue = existing_state.get('queue', [])
+                except:
+                    pass
             state_data = {}
             if track_data:
+                volume = track_data.get('volume_percent', 50)
+                device_name = track_data.get('device_name', '')
+                device_active = track_data.get('device_active', False)
+                if raw_track_data and 'device' in raw_track_data:
+                    device = raw_track_data.get('device', {})
+                    if device:
+                        volume = device.get('volume_percent', volume)
+                        device_name = device.get('name', device_name)
+                        device_active = True
                 state_data['current_track'] = {
                     'title': track_data.get('title', 'Unknown Track') or "Unknown Track",
                     'artists': track_data.get('artists', 'Unknown Artist') or "Unknown Artist",
@@ -2234,18 +2269,13 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
                     'is_playing': bool(track_data.get('is_playing', False)),
                     'timestamp': time.time(),
                     'shuffle_state': bool(track_data.get('shuffle_state', False)),
-                    'volume_percent': int(track_data.get('volume_percent', 50)),
-                    'device_name': track_data.get('device_name', ''),
-                    'device_active': bool(track_data.get('device_active', False))
+                    'volume_percent': int(volume),
+                    'device_name': device_name,
+                    'device_active': bool(device_active)
                 }
-                if raw_track_data and 'device' in raw_track_data:
-                    device = raw_track_data.get('device', {})
-                    state_data['current_track']['volume_percent'] = device.get('volume_percent', 50)
-                    state_data['current_track']['device_name'] = device.get('name', '')
-                    state_data['current_track']['device_active'] = device is not None
                 state_data['device_status'] = {
-                    'has_active_device': bool(state_data['current_track']['device_active']),
-                    'device_name': state_data['current_track']['device_name']
+                    'has_active_device': bool(device_active),
+                    'device_name': device_name
                 }
             else:
                 state_data['current_track'] = {
@@ -2267,7 +2297,9 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
                 }
             if queue_data is not None:
                 state_data['queue'] = queue_data
-            elif 'queue' not in state_data:
+            elif existing_queue:
+                state_data['queue'] = existing_queue
+            else:
                 state_data['queue'] = []
             for key in ['current_track', 'device_status']:
                 if key in state_data:
@@ -2290,15 +2322,15 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
                     'current_position': 0,
                     'duration': 0,
                     'is_playing': False,
-                    'timestamp': time.time()
+                    'timestamp': time.time(),
+                    'volume_percent': 50
                 },
                 'device_status': {
                     'has_active_device': False,
                     'device_name': ''
                 },
-                'queue': []
+                'queue': existing_queue
             }
-            
             with open(final_path, 'w', encoding='utf-8') as f:
                 toml.dump(fallback_data, f)
         except Exception as e:
@@ -2312,13 +2344,14 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
                         'current_position': 0,
                         'duration': 0,
                         'is_playing': False,
-                        'timestamp': time.time()
+                        'timestamp': time.time(),
+                        'volume_percent': 50
                     },
                     'device_status': {
                         'has_active_device': False,
                         'device_name': ''
                     },
-                    'queue': []
+                    'queue': existing_queue if 'existing_queue' in locals() else []
                 }
                 with open('.current_track_state.toml', 'w', encoding='utf-8') as f:
                     toml.dump(basic_data, f)

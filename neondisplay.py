@@ -619,35 +619,58 @@ def spotify_shuffle_queue():
         logger.error(error_message)
         return jsonify({'success': False, 'error': error_message})
 
-@app.route('/spotify_toggle_shuffle', methods=['POST'])
-@rate_limit(0.5)
-def spotify_toggle_shuffle():
+@app.route('/spotify_shuffle_toggle', methods=['POST'])
+def spotify_shuffle_toggle():
     logger = logging.getLogger('Launcher')
     try:
         sp, message = get_spotify_client()
         if not sp:
-            return jsonify({'success': False, 'error': message})
-        current_state = sp.current_playback()
-        if not current_state:
-            return jsonify({'success': False, 'error': 'No active Spotify device found.'})
-        current_shuffle_state = current_state.get('shuffle_state', False)
-        requested_state = request.json.get('state', not current_shuffle_state)
-        if current_shuffle_state != requested_state:
-            sp.shuffle(requested_state)
-        time.sleep(1)
-        updated_state = sp.current_playback()
-        actual_new_state = updated_state.get('shuffle_state', False) if updated_state else False
-        action = "Shuffle Enabled" if actual_new_state else "Shuffle Disabled"
-        logger.info(f"🔀 {action}")
-        return jsonify({
-            'success': True, 
-            'message': action,
-            'new_state': actual_new_state
-        })
+            return {'success': False, 'error': message}
+        playback = sp.current_playback()
+        if not playback:
+            return {'success': False, 'error': 'No active device'}
+        current = playback.get("shuffle_state", False)
+        if current:
+            new_state = False
+        else:
+            new_state = True
+        try:
+            sp.shuffle(new_state)
+            current_position_ms = playback.get('progress_ms', 0)
+            if current_position_ms is not None:
+                try:
+                    time.sleep(0.3)
+                    sp.seek_track(current_position_ms)
+                except:
+                    pass
+            time.sleep(0.5)
+            updated_playback = sp.current_playback()
+            actual_state = updated_playback.get("shuffle_state", new_state) if updated_playback else new_state
+            return {
+                "success": True,
+                "requested_state": int(actual_state),
+                "message": f"Shuffle {'ON' if actual_state else 'OFF'}"
+            }
+        except spotipy.exceptions.SpotifyException as e:
+            if e.http_status == 404:
+                logger.warning(f"Shuffle API error (possibly Smart Shuffle): {e}")
+                if new_state == False:
+                    return {
+                        "success": True,
+                        "requested_state": 0,
+                        "message": "Shuffle OFF"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "Cannot enable shuffle. Smart Shuffle may be active. Please disable it in Spotify app.",
+                        "is_smart_shuffle": True
+                    }
+            else:
+                raise
     except Exception as e:
-        error_message = f"Spotify shuffle error: {str(e)}"
-        logger.error(error_message)
-        return jsonify({'success': False, 'error': error_message})
+        logger.error(f"Shuffle toggle error: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.route('/spotify_volume', methods=['POST'])
 @rate_limit(0.5)
@@ -686,6 +709,59 @@ def spotify_add_to_queue():
         logger.error(f"Spotify add to queue error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
+@app.route('/spotify_skip_to_track', methods=['POST'])
+@rate_limit(0.5)
+def spotify_skip_to_track():
+    logger = logging.getLogger('Launcher')
+    try:
+        track_uri = request.json.get('track_uri', '').strip()
+        if not track_uri:
+            logger.error("No track URI provided")
+            return jsonify({'success': False, 'error': 'No track URI provided'})
+        track_name = request.json.get('track_name', 'Unknown Track')
+        logger.info(f"Attempting to skip to track: {track_name} ({track_uri})")
+        sp, message = get_spotify_client()
+        if not sp:
+            logger.error(f"Spotify client error: {message}")
+            return jsonify({'success': False, 'error': message})
+        current_playback = sp.current_playback()
+        if not current_playback:
+            logger.error("No active playback")
+            return jsonify({'success': False, 'error': 'No active playback'})
+        current_track = current_playback.get('item')
+        if current_track and current_track.get('uri') == track_uri:
+            logger.info("Track is already playing")
+            return jsonify({'success': True, 'message': 'Track is already playing'})
+        try:
+            queue = sp.queue()
+            queue_tracks = queue.get('queue', []) if queue else []
+            found_index = -1
+            for i, queue_track in enumerate(queue_tracks):
+                if queue_track.get('uri') == track_uri:
+                    found_index = i
+                    break
+            if found_index >= 0:
+                logger.info(f"Track found at position {found_index + 1} in queue")
+                for _ in range(found_index + 1):
+                    sp.next_track()
+                    time.sleep(0.3)
+                logger.info(f"Skipped to track at position {found_index + 1}")
+                return jsonify({
+                    'success': True, 
+                    'message': f'Now playing "{track_name}"'
+                })
+        except Exception as e:
+            logger.warning(f"Error checking queue: {e}")
+        logger.info(f"Track not in immediate queue, playing directly")
+        sp.start_playback(uris=[track_uri])
+        return jsonify({
+            'success': True, 
+            'message': f'Playing "{track_name}"'
+        })
+    except Exception as e:
+        logger.error(f"General error in skip_to_track: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'})
+
 @app.route('/spotify_device_status', methods=['GET'])
 def spotify_device_status():
     try:
@@ -722,29 +798,46 @@ def spotify_get_queue():
         if os.path.exists('.current_track_state.toml'):
             state_data = toml.load('.current_track_state.toml')
             queue_data = state_data.get('queue', [])
-            if queue_data:
-                return {'success': True, 'queue': queue_data, 'cached': True}
-        return {'success': False, 'error': 'No cached queue data', 'queue': []}
+            current_track = state_data.get('current_track', {})
+            timestamp = current_track.get('timestamp', 0)
+            if queue_data and (time.time() - timestamp < 10):
+                return jsonify({'success': True, 'queue': queue_data, 'cached': True})
+        return jsonify({
+            'success': True, 
+            'queue': [],
+            'cached': False,
+            'message': 'Queue updating...'
+        })
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Spotify get queue error: {str(e)}")
-        return {'success': False, 'error': str(e), 'queue': []}
+        return jsonify({
+            'success': True,
+            'queue': [],
+            'cached': False,
+            'error': str(e)
+        })
 
 @app.route('/spotify_get_shuffle_state', methods=['GET'])
 def spotify_get_shuffle_state():
     try:
         if os.path.exists('.current_track_state.toml'):
-            state_data = toml.load('.current_track_state.toml')
-            track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 3:
-                is_shuffling = track_data.get('shuffle_state', False)
-                return jsonify({'success': True, 'is_shuffling': is_shuffling, 'cached': True})
-        return jsonify({'success': False, 'is_shuffling': False, 'error': 'No cached shuffle state'})
+            state = toml.load('.current_track_state.toml')
+            track = state.get("current_track", {})
+            timestamp = track.get("timestamp", 0)
+            shuffle = track.get("shuffle_state", False)
+            if time.time() - timestamp < 30:
+                return jsonify({
+                    "success": True,
+                    "is_shuffling": shuffle,
+                    "cached": True,
+                    "timestamp": timestamp
+                })
+        return jsonify({"success": False, "error": "No state"})
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error getting shuffle state: {e}")
-        return jsonify({'success': False, 'is_shuffling': False, 'error': str(e)})
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route('/spotify_get_volume', methods=['GET'])
 def spotify_get_volume():
@@ -752,15 +845,14 @@ def spotify_get_volume():
         if os.path.exists('.current_track_state.toml'):
             state_data = toml.load('.current_track_state.toml')
             track_data = state_data.get('current_track', {})
-            timestamp = track_data.get('timestamp', 0)
-            if time.time() - timestamp < 1:
-                cached_volume = track_data.get('volume_percent', 50)
-                return {'success': True, 'volume': cached_volume, 'cached': True}
-        return {'success': False, 'error': 'No cached volume data', 'volume': 50}
+            cached_volume = track_data.get('volume_percent')
+            if cached_volume is not None:
+                return jsonify({'success': True, 'volume': cached_volume, 'cached': True})
+        return jsonify({'success': True, 'volume': 50, 'cached': False})
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Get volume error: {str(e)}")
-        return {'success': False, 'error': str(e), 'volume': 50}
+        return jsonify({'success': False, 'error': str(e), 'volume': 50})
 
 @app.route('/spotify_search', methods=['POST'])
 @rate_limit(1.0)
@@ -890,7 +982,7 @@ def clear_logs():
                 else:
                     break
             message = f'Backup logs cleared ({backups_cleared} files removed)'
-        else:  # 'current' option
+        else:
             logger = logging.getLogger('Launcher')
             for handler in logger.handlers[:]:
                 if isinstance(handler, RotatingFileHandler):
