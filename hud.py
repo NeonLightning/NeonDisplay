@@ -925,6 +925,9 @@ def draw_waveshare(weather_info, spotify_track):
     clock_x = display_width - time_width - 5
     clock_y = display_height - time_height - 8
     draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
+    rotation = config.get("display", {}).get("rotation", 0)
+    if rotation == 180:
+        img = img.rotate(180, expand=False)
     img.content_changed = content_changed
     return img
 
@@ -970,6 +973,9 @@ def draw_waveshare_sleep_screen():
                 img.paste(weather_info["cached_icon"], (weather_x, icon_y))
             except Exception as e:
                 print(f"Error pasting weather icon: {e}")
+    rotation = config.get("display", {}).get("rotation", 0)
+    if rotation == 180:
+        img = img.rotate(180, expand=False)
     img.content_changed = False
     return img
 
