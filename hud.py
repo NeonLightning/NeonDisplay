@@ -22,6 +22,22 @@ CLOCK_TYPE = "analog"
 CLOCK_BACKGROUND = "color"
 CLOCK_COLOR = "black"
 INTERNET_CHECK_INTERVAL = 120
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(SCRIPT_DIR, "static", "font", "mx_univga.ttf")
+FONT_PATH_BOLD = os.path.join(SCRIPT_DIR, "static", "font", "mx_univga.ttf")
+LARGE_FONT = ImageFont.truetype(FONT_PATH_BOLD, 32)
+MEDIUM_FONT = ImageFont.truetype(FONT_PATH, 20)
+SMALL_FONT = ImageFont.truetype(FONT_PATH, 10)
+SPOT_LARGE_FONT = ImageFont.truetype(FONT_PATH_BOLD, 20)
+SPOT_MEDIUM_FONT = ImageFont.truetype(FONT_PATH, 12)
+SPOT_SMALL_FONT = ImageFont.truetype(FONT_PATH, 8)
+WAVESHARE_FONT_SMALL = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_MEDIUM = ImageFont.truetype(FONT_PATH_BOLD, 18)
+WAVESHARE_FONT_LARGE = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_TIME = ImageFont.truetype(FONT_PATH_BOLD, 32)
+WAVESHARE_FONT_DATE = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_WEATHER = ImageFont.truetype(FONT_PATH_BOLD, 16)
+WAVESHARE_FONT_WEATHER_SMALL = ImageFont.truetype(FONT_PATH_BOLD, 16)
 process_executor = None
 frame_hash_cache = {}
 frame_hash_cache_size = 50
@@ -47,20 +63,6 @@ DEFAULT_CONFIG = {
             "rotation": 0,
             "spi_speed": 60000000
         }
-    },
-    "fonts": {
-        "large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "large_font_size": 36,
-        "medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "medium_font_size": 24,
-        "small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "small_font_size": 16,
-        "spot_large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "spot_large_font_size": 26,
-        "spot_medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_medium_font_size": 18,
-        "spot_small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_small_font_size": 12
     },
     "api_keys": {
         "openweather": "",
@@ -829,14 +831,9 @@ def draw_waveshare(weather_info, spotify_track):
     img = Image.new('1', (display_width, display_height), 255)
     draw = ImageDraw.Draw(img)
     draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
-    try:
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
-        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-    except:
-        font_small = ImageFont.load_default()
-        font_medium = ImageFont.load_default()
-        font_large = ImageFont.load_default()
+    font_small = WAVESHARE_FONT_SMALL
+    font_medium = WAVESHARE_FONT_MEDIUM
+    font_large = WAVESHARE_FONT_LARGE
     content_changed = False
     current_track_id = None
     if spotify_track:
@@ -918,7 +915,58 @@ def draw_waveshare(weather_info, spotify_track):
     clock_x = display_width - time_width - 5
     clock_y = display_height - time_height - 8
     draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
+    rotation = config.get("display", {}).get("rotation", 0)
+    if rotation == 180:
+        img = img.rotate(180, expand=False)
     img.content_changed = content_changed
+    return img
+
+def draw_waveshare_sleep_screen():
+    display_width = 250
+    display_height = 122
+    img = Image.new('1', (display_width, display_height), 255)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
+    font_time = ImageFont.truetype(FONT_PATH_BOLD, 32)
+    font_date = ImageFont.truetype(FONT_PATH_BOLD, 18)
+    font_weather = ImageFont.truetype(FONT_PATH_BOLD, 18)
+    font_weather_small = ImageFont.truetype(FONT_PATH_BOLD, 16)
+    now = datetime.datetime.now()
+    time_str = now.strftime("%H:%M")
+    time_bbox = draw.textbbox((0, 0), time_str, font=font_time)
+    time_width = time_bbox[2] - time_bbox[0]
+    time_height = time_bbox[3] - time_bbox[1]
+    time_x = (display_width - time_width) // 2
+    time_y = (display_height - time_height) // 2 - 10
+    draw.text((time_x, time_y), time_str, font=font_time, fill=0)
+    date_str = now.strftime("%a, %b %d")
+    date_bbox = draw.textbbox((0, 0), date_str, font=font_date)
+    date_width = date_bbox[2] - date_bbox[0]
+    date_x = (display_width - date_width) // 2
+    date_y = time_y + time_height + 5
+    draw.text((date_x, date_y), date_str, font=font_date, fill=0)
+    if weather_info and OPENWEATHER_API_KEY:
+        weather_x = 5
+        temp_text = f"{weather_info['temp']}°C"
+        temp_bbox = draw.textbbox((0, 0), temp_text, font=font_weather)
+        temp_height = temp_bbox[3] - temp_bbox[1]
+        temp_y = display_height - temp_height - 5
+        draw.text((weather_x, temp_y), temp_text, font=font_weather, fill=0)
+        desc_text = weather_info['description']
+        desc_bbox = draw.textbbox((0, 0), desc_text, font=font_weather_small)
+        desc_height = desc_bbox[3] - desc_bbox[1]
+        desc_y = temp_y - desc_height - 2
+        draw.text((weather_x, desc_y), desc_text, font=font_weather_small, fill=0)
+        if "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
+            try:
+                icon_y = desc_y - 35
+                img.paste(weather_info["cached_icon"], (weather_x, icon_y))
+            except Exception as e:
+                print(f"Error pasting weather icon: {e}")
+    rotation = config.get("display", {}).get("rotation", 0)
+    if rotation == 180:
+        img = img.rotate(180, expand=False)
+    img.content_changed = False
     return img
 
 def draw_text_aliased(draw, image, position, text, font, fill):
@@ -1519,9 +1567,29 @@ def get_location_via_openweathermap_geocoding(api_key, city_name):
 
 def sleep_monitor_loop():
     last_sleep_check = 0
+    last_waveshare_update = 0
+    waveshare_update_interval = 15
+    first_sleep_update = True
     while not exit_event.is_set():
         current_time = time.time()
         if display_sleeping:
+            if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+                if current_time - last_waveshare_update >= waveshare_update_interval:
+                    sleep_img = draw_waveshare_sleep_screen()
+                    with waveshare_lock:
+                        if waveshare_epd is not None:
+                            if first_sleep_update:
+                                first_sleep_update = False
+                            elif waveshare_base_image is not None:
+                                try:
+                                    sleep_img.content_changed = False
+                                    waveshare_epd.displayPartial(waveshare_epd.getbuffer(sleep_img))
+                                except Exception as e:
+                                    print(f"Partial refresh failed, falling back to full refresh: {e}")
+                                    waveshare_epd.init()
+                                    waveshare_epd.Clear(0xFF)
+                                    waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                    last_waveshare_update = current_time
             if current_time - last_sleep_check >= WAKEUP_CHECK_INTERVAL:
                 check_sleep_state()
                 last_sleep_check = current_time
@@ -1637,18 +1705,52 @@ def signal_handler(sig, frame):
 
 def go_to_sleep():
     global display_sleeping, last_display_time
-    if not display_sleeping:
-        display_sleeping = True
-        try:
-            if display_type == "st7789" and HAS_ST7789 and st7789_display:
-                black_img = Image.new("RGB", (320, 240), "black")
-                with st7789_lock:
-                    st7789_display.display(black_img)
-            time.sleep(0.05)
-        except:
-            pass
+    if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+        go_to_sleep_waveshare()
+    else:
+        if not display_sleeping:
+            display_sleeping = True
+            try:
+                if display_type == "st7789" and HAS_ST7789 and st7789_display:
+                    black_img = Image.new("RGB", (320, 240), "black")
+                    with st7789_lock:
+                        st7789_display.display(black_img)
+                time.sleep(0.05)
+            except:
+                pass
+            last_display_time = 0
+            clear_framebuffer()
+
+def go_to_sleep_waveshare():
+    global display_sleeping, last_display_time, waveshare_epd
+    if display_sleeping:
+        return
+    display_sleeping = True
+    try:
+        sleep_img = draw_waveshare_sleep_screen()
+        with waveshare_lock:
+            if waveshare_epd is None:
+                if not init_waveshare_display():
+                    print("Failed to initialize Waveshare for sleep mode")
+                    return
+            try:
+                waveshare_epd.init()
+                waveshare_epd.Clear(0xFF)
+                waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                waveshare_base_image = sleep_img.copy()
+            except Exception as e:
+                print(f"Error displaying Waveshare sleep screen: {e}")
+                try:
+                    waveshare_epd.init()
+                    waveshare_epd.Clear(0xFF)
+                    waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                    waveshare_base_image = sleep_img.copy()
+                except Exception as e2:
+                    print(f"Waveshare sleep fallback also failed: {e2}")
         last_display_time = 0
-        clear_framebuffer()
+    except Exception as e:
+        print(f"Critical error in Waveshare sleep mode: {e}")
+        display_sleeping = True
 
 # ============== PREPARE FUNCTIONS ==============
 
@@ -1771,6 +1873,20 @@ def prepare_weather_state_data(weather_data):
 
 def check_sleep_state():
     global display_sleeping, START_SCREEN
+    if display_type == "waveshare_epd":
+        if START_SCREEN != "spotify":
+            if display_sleeping:
+                wake_up_display()
+            return
+        current_time = time.time()
+        music_playing = spotify_track and spotify_track.get('is_playing', False)
+        if display_sleeping:
+            if music_playing:
+                wake_up_display()
+        else:
+            if not music_playing and current_time - last_activity_time >= SLEEP_TIMEOUT:
+                go_to_sleep()
+        return
     if START_SCREEN != "spotify":
         if display_sleeping:
             wake_up_display()
@@ -1786,14 +1902,26 @@ def check_sleep_state():
 
 def go_to_sleep():
     global display_sleeping, last_display_time
-    if not display_sleeping:
+    if display_sleeping:
+        return
+    if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+        go_to_sleep_waveshare()
+    else:
         display_sleeping = True
-        time.sleep(0.05)
+        try:
+            if display_type == "st7789" and HAS_ST7789 and st7789_display:
+                black_img = Image.new("RGB", (320, 240), "black")
+                with st7789_lock:
+                    st7789_display.display(black_img)
+            time.sleep(0.05)
+        except Exception as e:
+            print(f"Error during sleep transition: {e}")
         last_display_time = 0
-        clear_framebuffer()
+        if display_type != "waveshare_epd":
+            clear_framebuffer()
 
 def wake_up_display():
-    global display_sleeping
+    global display_sleeping, first_sleep_update
     if display_sleeping:
         display_sleeping = False
         update_activity()

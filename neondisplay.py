@@ -33,20 +33,6 @@ DEFAULT_CONFIG = {
             "spi_speed": 60000000
         }
     },
-    "fonts": {
-        "large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "large_font_size": 36,
-        "medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "medium_font_size": 24,
-        "small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "small_font_size": 16,
-        "spot_large_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "spot_large_font_size": 26,
-        "spot_medium_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_medium_font_size": 18,
-        "spot_small_font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "spot_small_font_size": 12
-    },
     "api_keys": {
         "openweather": "",
         "google_geo": "",
@@ -240,7 +226,6 @@ def check_display_change():
 def reset_advanced_config():
     config = load_config()
     config["display"] = DEFAULT_CONFIG["display"].copy()
-    config["fonts"] = DEFAULT_CONFIG["fonts"].copy()
     config["api_keys"] = DEFAULT_CONFIG["api_keys"].copy()
     config["settings"] = DEFAULT_CONFIG["settings"].copy()
     config["wifi"] = DEFAULT_CONFIG["wifi"].copy()
@@ -312,18 +297,6 @@ def save_advanced_config():
         config["display"]["st7789"]["dc_pin"] = int(request.form.get('dc_pin', 9))
         config["display"]["st7789"]["backlight_pin"] = int(request.form.get('backlight_pin', 13))
         config["display"]["st7789"]["spi_speed"] = int(request.form.get('spi_speed', 60000000))
-        config["fonts"]["large_font_path"] = request.form.get('large_font_path', '')
-        config["fonts"]["large_font_size"] = int(request.form.get('large_font_size', 36))
-        config["fonts"]["medium_font_path"] = request.form.get('medium_font_path', '')
-        config["fonts"]["medium_font_size"] = int(request.form.get('medium_font_size', 24))
-        config["fonts"]["small_font_path"] = request.form.get('small_font_path', '')
-        config["fonts"]["small_font_size"] = int(request.form.get('small_font_size', 16))
-        config["fonts"]["spot_large_font_path"] = request.form.get('spot_large_font_path', '')
-        config["fonts"]["spot_large_font_size"] = int(request.form.get('spot_large_font_size', 26))
-        config["fonts"]["spot_medium_font_path"] = request.form.get('spot_medium_font_path', '')
-        config["fonts"]["spot_medium_font_size"] = int(request.form.get('spot_medium_font_size', 18))
-        config["fonts"]["spot_small_font_path"] = request.form.get('spot_small_font_path', '')
-        config["fonts"]["spot_small_font_size"] = int(request.form.get('spot_small_font_size', 12))
         if "buttons" not in config:
             config["buttons"] = {}
         config["buttons"]["button_a"] = int(request.form.get('button_a', 5))
