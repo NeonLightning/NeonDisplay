@@ -137,6 +137,20 @@
             color: var(--text-on-dark);
             border: 2px solid var(--error-border);
         }
+        .api-status-label {
+            font-weight: bold;
+            font-size: 1em;
+            padding-left: 5px;
+        }
+        .api-status-label.success {
+            color: var(--success-border);
+        }
+        .api-status-label.error {
+            color: var(--error-border);
+        }
+        .api-status-label.info {
+            color: var(--text-secondary);
+        }
         .theme-toggle {
             position: fixed;
             top: 20px;
@@ -226,7 +240,21 @@
                             <input type="text" id="openweather" name="openweather" value="{{ config.api_keys.openweather }}" placeholder="Enter your OpenWeatherMap API key">
                         </div>
                         <div class="form-group">
-                            <label for="google_geo">Google Geolocation API Key:</label>
+                            <label for="google_geo">
+                                Google Geolocation API Key:
+                                {% set google_status = config.api_status.google_geo if config.api_status and config.api_status.google_geo %}
+                                {% if google_status %}
+                                    <span class="api-status-label {% if google_status.state == 'success' %}success{% elif google_status.state == 'error' %}error{% else %}info{% endif %}">
+                                        {% if google_status.state == 'success' %}
+                                            Success
+                                        {% elif google_status.state == 'error' %}
+                                            ERROR - {{ google_status.message }}
+                                        {% else %}
+                                            {{ google_status.state|upper }} - {{ google_status.message }}
+                                        {% endif %}
+                                    </span>
+                                {% endif %}
+                            </label>
                             <input type="text" id="google_geo" name="google_geo" value="{{ config.api_keys.google_geo }}" placeholder="Enter Google Geolocation API key">
                             <small>Optional - for precise location without GPS</small>
                         </div>
@@ -256,9 +284,17 @@
                     <div class="config-grid">
                         <div>
                             <div class="form-group">
-                                <label for="fallback_city">Fallback City:</label>
-                                <input type="text" id="fallback_city" name="fallback_city" value="{{ config.settings.fallback_city }}" placeholder="e.g., London,UK">
-                                <small>Used when location services are unavailable</small>
+                                <label for="fallback_city">
+                                    Fallback City:
+                                    {% set fallback_status = config.api_status.fallback_city if config.api_status and config.api_status.fallback_city %}
+                                    {% if fallback_status %}
+                                        <span class="api-status-label {% if fallback_status.state == 'success' %}success{% elif fallback_status.state == 'error' %}error{% else %}info{% endif %}">
+                                            {{ fallback_status.message }}
+                                        </span>
+                                    {% endif %}
+                                </label>
+                                <input type="text" id="fallback_city" name="fallback_city" value="{{ config.settings.fallback_city }}" placeholder="e.g., London,UK or Seattle,WA,US">
+                                <small>Use City,Country or City,State,Country (state optional outside the US)</small>
                             </div>
                         </div>
                         <div>
