@@ -1,0 +1,69 @@
+@font-face {
+    font-family: 'Metamorphous';
+    src: url('/static/font/Metamorphous.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Metamorphousbold';
+    src: url('/static/font/Metamorphous.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    --font-primary: 'Metamorphous', monospace;
+    --font-bold: 'Metamorphousbold', monospace;
+    --bg-primary: #000000;
+    --bg-secondary: #0d0000;
+    --bg-tertiary: #1a0000;
+    --text-primary: #cc0000;
+    --text-secondary: #990000;
+    --accent-color: #660000;
+    --accent-hover: #800000;
+    --border-color: #330000;
+    --success-bg: #0d0000;
+    --success-border: #660000;
+    --error-bg: #1a0000;
+    --error-border: #cc0000;
+    --warning-bg: #1a0a00;
+    --warning-border: #aa3300;
+    --info-bg: #0d0000;
+    --info-border: #4d0000;
+    --card-bg: #0d0000;
+    --log-bg: #000000;
+    --success-color: #cc0000;
+    --warning-color: #cc3300;
+    --text-on-dark: #cc0000;
+    --text-on-light: #000000;
+    --text-secondary-on-dark: rgba(204, 0, 0, 0.8);
+}
+
+[data-theme="light"] {
+    --bg-primary: #1a0000;
+    --bg-secondary: #330000;
+    --bg-tertiary: #4d0000;
+    --text-primary: #ff6666;
+    --text-secondary: #cc3333;
+    --accent-color: #990000;
+    --accent-hover: #bb0000;
+    --border-color: #660000;
+    --success-bg: #330000;
+    --success-border: #990000;
+    --error-bg: #4d0000;
+    --error-border: #cc0000;
+    --warning-bg: #4d1a00;
+    --warning-border: #cc4400;
+    --info-bg: #330000;
+    --info-border: #800000;
+    --card-bg: #330000;
+    --log-bg: #1a0000;
+    --success-color: #ff3333;
+    --warning-color: #ff6633;
+    --text-on-dark: #ff6666;
+    --text-on-light: #1a0000;
+    --text-secondary-on-dark: rgba(255, 102, 102, 0.8);
+}
