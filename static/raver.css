@@ -1,0 +1,167 @@
+@font-face {
+    font-family: 'MatrixUnivga';
+    src: url('/static/font/mx_univga.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'MatrixUnivgaBold';
+    src: url('/static/font/mx_univga.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    /* ===== FONTS ===== */
+    --font-primary: 'MatrixUnivga', monospace;
+    --font-bold: 'MatrixUnivgaBold', monospace;
+    
+    /* ===== BASE COLORS (DEFAULT: DARK/NIGHT MODE) ===== */
+    --color-bg-base: #0a0014;
+    --color-bg-elevated: #1a0033;
+    --color-bg-overlay: #2e005c;
+    --color-text-primary: #e6ffff;
+    --color-text-secondary: #ff66ff;
+    --color-text-tertiary: #a040a0;
+    --color-border-default: #00ff99;
+    --color-border-subtle: #2e005c;
+    --color-border-strong: #ff00ff;
+    
+    /* ===== INTERACTIVE COLORS (NEON ACCENTS) ===== */
+    --color-primary: #00ff66;
+    --color-primary-hover: #33ff99;
+    --color-primary-active: #00cc52;
+    --color-secondary: #ff00ff;
+    --color-secondary-hover: #ff33ff;
+    --color-secondary-active: #cc00cc;
+    
+    /* ===== STATUS COLORS (High-Contrast Neon) ===== */
+    --color-success: #00ffcc;
+    --color-success-bg: #003322;
+    --color-success-border: #00ffcc;
+    --color-success-text: #e6ffff;
+    --color-error: #ff3333;
+    --color-error-bg: #330000;
+    --color-error-border: #ff3333;
+    --color-error-text: #e6ffff;
+    --color-warning: #ffee00;
+    --color-warning-bg: #333300;
+    --color-warning-border: #ffee00;
+    --color-warning-text: #212121;
+    --color-info: #42a5f5;
+    --color-info-bg: #001a33;
+    --color-info-border: #42a5f5;
+    --color-info-text: #e6ffff;
+    
+    /* ===== COMPONENT-SPECIFIC (Deep & Glowing) ===== */
+    --color-card-bg: var(--color-bg-elevated);
+    --color-card-border: #ff00ff;
+    --color-log-bg: #00000a;
+    --color-log-text: var(--color-text-primary);
+    --color-input-bg: #1a0033;
+    --color-input-border: #00ff66;
+    --color-input-text: var(--color-text-primary);
+    --color-input-placeholder: var(--color-text-tertiary);
+    
+    /* ===== LEGACY MAPPINGS (for backwards compatibility) ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: var(--color-text-primary);
+    --text-on-light: #000000;
+    --text-secondary-on-dark: var(--color-text-secondary);
+}
+
+[data-theme="light"] {
+/* ===== BASE COLORS (LIGHT/DAY MODE: HIGH-SATURATION NEON/BRIGHT) ===== */
+    --color-bg-base: #ffffff;
+    --color-bg-elevated: #f0f8ff;
+    --color-bg-overlay: #f5f5f5;
+    --color-text-primary: #000000;
+    --color-text-secondary: #ff00ff;
+    --color-text-tertiary: #5a005a;
+    --color-border-default: #00cccc;
+    --color-border-subtle: #f0f0f0;
+    --color-border-strong: #ff0099;
+    
+    /* ===== INTERACTIVE COLORS (BRIGHT ACCENTS) ===== */
+    --color-primary: #ff00ff;
+    --color-primary-hover: #cc00cc;
+    --color-primary-active: #990099;
+    --color-secondary: #00ff66;
+    --color-secondary-hover: #00cc52;
+    --color-secondary-active: #00993d;
+    
+    /* ===== STATUS COLORS (High-Contrast for Light Background) ===== */
+    --color-success: #009966;
+    --color-success-bg: #e6fff0;
+    --color-success-border: #009966;
+    --color-success-text: #000000;
+    --color-error: #cc3333;
+    --color-error-bg: #fff0f0;
+    --color-error-border: #cc3333;
+    --color-error-text: #000000;
+    --color-warning: #ffaa00;
+    --color-warning-bg: #fffceb;
+    --color-warning-border: #ffaa00;
+    --color-warning-text: #000000;
+    --color-info: #00cccc;
+    --color-info-bg: #e0ffff;
+    --color-info-border: #00cccc;
+    --color-info-text: #000000;
+    
+    /* ===== COMPONENT-SPECIFIC (Bright & Clean) ===== */
+    --color-card-bg: var(--color-bg-elevated);
+    --color-card-border: #00cccc;
+    --color-log-bg: #f0f0f0;
+    --color-log-text: #000000;
+    --color-input-bg: #ffffff;
+    --color-input-border: #ff00ff;
+    --color-input-text: #000000;
+    --color-input-placeholder: var(--color-text-tertiary);
+    
+    /* ===== LEGACY MAPPINGS (for backwards compatibility) ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: #ffffff;
+    --text-on-light: var(--color-text-primary);
+    --text-secondary-on-dark: #ff66ff;
+}

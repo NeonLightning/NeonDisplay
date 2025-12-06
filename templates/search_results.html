@@ -115,12 +115,6 @@
             color: var(--color-text-primary);
             min-width: unset;
         }
-        .refresh-button {
-            background: var(--color-primary);
-        }
-        .refresh-button:hover {
-            background: var(--color-primary-hover);
-        }
         .shuffle-button {
             background: var(--color-primary);
         }
@@ -433,11 +427,10 @@
                 </div>
                 <div class="queue-container">
                     <div class="queue-header">
-                        <h3>♪ Current Queue</h3>
+                        <h3>♪ Queue</h3>
                         <button id="shuffleBtn" onclick="toggleShuffle()" class="shuffle-button" data-state="0">
                             ⧓ Shuffle OFF
                         </button>
-                        <button class="refresh-button" onclick="loadQueue()">↻ Refresh</button>
                     </div>
                     <div id="queueList">
                         <div class="empty-state">

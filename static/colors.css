@@ -1,8 +1,4 @@
-:root {
-    /* ===== FONTS ===== */
-    --font-primary: 'Ldfcomicsanslight', monospace;
-    --font-bold: 'Ldfcomicsansbold', monospace;
-    
+:root {    
     /* ===== BASE COLORS ===== */
     --color-bg-base: #1e1e1e;
     --color-bg-elevated: #2d2d2d;
