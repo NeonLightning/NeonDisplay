@@ -277,16 +277,23 @@ def save_advanced_config():
         config["ui"]["css_file"] = selected_css
     else:
         config["ui"]["css_file"] = DEFAULT_CONFIG["ui"]["css_file"]
+    openweather_key = request.form.get('openweather', '').strip()
+    google_geo_key = request.form.get('google_geo', '').strip()
     fallback_input = request.form.get('fallback_city', '').strip()
-    is_valid_fallback, fallback_message, normalized_fallback = validate_fallback_city_input(
-        fallback_input,
-        config["api_keys"].get("openweather", "")
-    )
-    if not is_valid_fallback:
-        config["api_status"]["fallback_city"] = _build_api_status("error", fallback_message)
-        save_config(config)
-        flash('error', fallback_message)
-        return redirect(url_for('advanced_config'))
+    normalized_fallback = ""
+    if fallback_input:
+        is_valid_fallback, fallback_message, normalized_fallback = validate_fallback_city_input(
+            fallback_input,
+            openweather_key or config["api_keys"].get("openweather", "")
+        )
+        if not is_valid_fallback:
+            config["api_status"]["fallback_city"] = _build_api_status("error", fallback_message)
+            save_config(config)
+            flash(fallback_message, 'error')
+            return redirect(url_for('advanced_config'))
+        config["api_status"]["fallback_city"] = _build_api_status("success", f"Using {normalized_fallback}")
+    else:
+        config["api_status"]["fallback_city"] = _build_api_status("info", "No fallback city set")
     try:
         old_display_type = config.get("display", {}).get("type", "framebuffer")
         new_display_type = request.form.get('display_type', 'framebuffer')
@@ -294,14 +301,12 @@ def save_advanced_config():
         if old_display_type != new_display_type:
             if request.form.get('modify_boot_config') == 'true':
                 modify_boot = True
-        config["api_keys"]["openweather"] = request.form.get('openweather', '').strip()
-        google_geo_key = request.form.get('google_geo', '').strip()
+        config["api_keys"]["openweather"] = openweather_key
         config["api_keys"]["google_geo"] = google_geo_key
         config["api_keys"]["client_id"] = request.form.get('client_id', '').strip()
         config["api_keys"]["client_secret"] = request.form.get('client_secret', '').strip()
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000').strip()
         config["settings"]["fallback_city"] = normalized_fallback
-        config["api_status"]["fallback_city"] = _build_api_status("success", f"Using {normalized_fallback}")
         config["display"]["type"] = new_display_type
         config["display"]["framebuffer"] = request.form.get('framebuffer_device', '/dev/fb1')
         config["display"]["rotation"] = int(request.form.get('rotation', 0))
@@ -364,17 +369,17 @@ def save_advanced_config():
             enable_fb = (new_display_type == "framebuffer")
             success, message = modify_boot_config(enable_fb)
             if success:
-                flash('success', f'Configuration saved! {message} Please restart hud for display changes to take effect.')
+                flash(f'Configuration saved! {message} Please restart hud for display changes to take effect.', 'success')
             else:
-                flash('warning', f'Configuration saved but boot config modification failed: {message}')
+                flash(f'Configuration saved but boot config modification failed: {message}', 'warning')
         elif old_display_type != new_display_type:
-            flash('success', 'Configuration saved! Please restart hud for display changes to take effect.')
+            flash('Configuration saved! Please restart hud for display changes to take effect.', 'success')
         else:
-            flash('success', 'Advanced configuration saved successfully!')
+            flash('Advanced configuration saved successfully!', 'success')
         save_config(config)
         restart_processes_after_config()
     except Exception as e:
-        flash('error', f'Error saving configuration: {str(e)}')
+        flash(f'Error saving configuration: {str(e)}', 'error')
     return redirect(url_for('advanced_config'))
 
 @app.route('/toggle_theme', methods=['POST'])
