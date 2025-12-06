@@ -164,20 +164,6 @@
         padding-bottom: 10px;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }
-    .toggle-switch {
-        display: flex;
-        align-items: center;
-        margin: 10px 0;
-    }
-    .toggle-switch input[type="checkbox"] {
-        margin-right: 10px;
-        transform: scale(1.5);
-        cursor: pointer;
-    }
-    .toggle-switch label {
-        color: var(--text-primary);
-        cursor: pointer;
-    }
     .app-status {
         font-family: var(--font-bold);
         text-align: center;
@@ -244,17 +230,6 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 20px;
-    }
-    .save-all-button {
-        background: var(--success-border);
-        color: var(--text-on-dark);
-        font-size: 18px;
-        padding: 15px;
-        margin-top: 30px;
-        border: 3px solid var(--border-color);
-    }
-    .save-all-button:hover {
-        background: var(--success-hover);
     }
     .progress-bar-pulse {
         animation: pulse 2s infinite;
@@ -579,7 +554,7 @@
                 </a>
             {% endif %}
             <a href="/advanced_config">
-                <button type="button" class="btn-secondary">⚙ Advanced Configuration</button>
+                <button type="button" class="btn-secondary">⚙ Configuration</button>
             </a>
         </div>
         <div class="section">
