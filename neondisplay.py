@@ -267,6 +267,8 @@ def save_all_config():
 @app.route('/save_advanced_config', methods=['POST'])
 def save_advanced_config():
     config = load_config()
+    auto_start_hud = 'auto_start_hud' in request.form
+    auto_start_neonwifi = 'auto_start_neonwifi' in request.form
     if "ui" not in config:
         config["ui"] = {}
     if "api_status" not in config:
@@ -349,7 +351,11 @@ def save_advanced_config():
         config["clock"]["background"] = request.form.get('clock_background', 'color')
         config["clock"]["color"] = request.form.get('clock_color', '#000000')
         config["clock"]["type"] = request.form.get('clock_type', 'digital')
-
+        config["auto_start"] = {
+            "auto_start_hud": auto_start_hud,
+            "auto_start_neonwifi": auto_start_neonwifi,
+            "check_internet": 'check_internet' in request.form
+        }
         if use_google_geo:
             if google_geo_key:
                 success, status_message = validate_google_geo_api_key(google_geo_key)

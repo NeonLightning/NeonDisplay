@@ -4,8 +4,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>Music Statistics</title>
     <style>
+        * {
+            font-family: var(--font-primary); 
+        }
         body {
-            font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
             background: var(--bg-primary);
@@ -46,9 +48,10 @@
             border: 2px solid var(--border-color);
         }
         .stat-number {
+            font-family: var(--font-bold);
             font-size: 2em;
             font-weight: bold;
-            color: var(--accent-color);
+            color: var(--text-primary);
         }
         .stat-label {
             color: var(--text-secondary);
@@ -97,6 +100,7 @@
             border-left: 4px solid var(--accent-color);
         }
         .song-name {
+            font-family: var(--font-bold);
             font-size: 13px;
             font-weight: bold;
             margin-bottom: 4px;
@@ -129,6 +133,7 @@
             transition: width 0.3s ease;
         }
         .bar-count {
+            font-family: var(--font-bold);
             flex: 0 0 40px;
             text-align: right;
             font-size: 12px;
@@ -179,6 +184,7 @@
             border-left: 4px solid var(--accent-color);
         }
         .artist-name-full {
+            font-family: var(--font-bold);
             flex: 0 0 200px;
             font-size: 13px;
             font-weight: bold;
@@ -200,6 +206,7 @@
             transition: width 0.3s ease;
         }
         .artist-bar-count {
+            font-family: var(--font-bold);
             flex: 0 0 40px;
             text-align: right;
             font-size: 12px;
@@ -233,6 +240,7 @@
             border: 1px solid #f5c6cb;
         }
         .status.info, .status.success, .status.error {
+            font-family: var(--font-bold);
             border: 2px solid;
             font-weight: bold;
         }
@@ -245,6 +253,7 @@
             transition: all 0.3s ease;
         }
         button {
+            font-family: var(--font-bold);
             background: var(--accent-color);
             border: 2px solid var(--border-color);
             cursor: pointer;

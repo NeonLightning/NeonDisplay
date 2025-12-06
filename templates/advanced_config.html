@@ -4,8 +4,13 @@
     <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>Advanced Configuration - NeonDisplay Launcher</title>
     <style>
+        * {
+            font-family: var(--font-primary); 
+        }
+        p {
+            color: var(--text-secondary)
+        }
         body {
-            font-family: Arial, sans-serif;
             max-width: 100%;
             margin: 0;
             padding: 20px;
@@ -44,6 +49,7 @@
             margin-bottom: 20px;
         }
         label {
+            font-family: var(--font-bold);
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
@@ -94,6 +100,7 @@
             gap: 20px;
         }
         button {
+            font-family: var(--font-bold);
             background: var(--accent-color);
             color: var(--text-on-dark);
             border: 2px solid var(--border-color);
@@ -152,6 +159,7 @@
             color: var(--text-secondary);
         }
         .theme-toggle {
+            font-family: var(--font-bold);
             position: fixed;
             top: 20px;
             right: 20px;
@@ -540,6 +548,24 @@
                             <small>Number of backup log files to keep in backuplogs folder</small>
                         </div>
                     </div>
+                </div>
+            </div>
+            <div class="section">
+                <h2>⚡ Auto-start Configuration</h2>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="auto_start_hud" name="auto_start_hud" 
+                        {% if config.auto_start.auto_start_hud %}checked{% endif %}>
+                    <label for="auto_start_hud">Auto-start hud Display on boot</label>
+                </div>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="auto_start_neonwifi" name="auto_start_neonwifi" 
+                        {% if config.auto_start.auto_start_neonwifi %}checked{% endif %}>
+                    <label for="auto_start_neonwifi">Auto-start WiFi Manager on boot</label>
+                </div>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="check_internet" name="check_internet" 
+                        {% if config.auto_start.check_internet %}checked{% endif %}>
+                    <label for="check_internet">Wait for internet connection before starting hud</label>
                 </div>
             </div>
             <div style="text-align: center; margin-top: 30px;">

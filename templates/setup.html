@@ -4,8 +4,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>NeonDisplay Launcher</title>
 <style>
+    * {
+        font-family: var(--font-primary);
+    }
     body { 
-        font-family: Arial, sans-serif; 
         max-width: 100%;
         margin: 0;
         padding: 20px;
@@ -30,27 +32,12 @@
     .form-group { 
         margin-bottom: 20px; 
     }
-    label { 
+    label {
+        font-family: var(--font-bold);
         display: block; 
         margin-bottom: 5px; 
         font-weight: bold;
         color: var(--text-primary);
-    }
-    input[type="text"], input[type="password"], textarea, select { 
-        width: 100%; 
-        padding: 10px; 
-        border: 2px solid var(--border-color); 
-        border-radius: 5px; 
-        box-sizing: border-box;
-        font-size: 16px;
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-        transition: all 0.3s ease;
-    }
-    input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
-        border-color: var(--accent-color);
-        outline: none;
-        box-shadow: 0 0 8px var(--accent-color);
     }
     .section {
         background: var(--bg-tertiary);
@@ -66,11 +53,12 @@
         text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }
     button { 
-        background: var(--accent-color); 
-        color: var(--text-on-dark); 
-        border: 2px solid var(--border-color); 
-        padding: 12px 20px; 
-        border-radius: 5px; 
+        font-family: var(--font-bold);
+        background: var(--accent-color);
+        color: var(--text-on-dark);
+        border: 2px solid var(--border-color);
+        padding: 12px 20px;
+        border-radius: 5px;
         cursor: pointer; 
         font-size: 16px;
         font-weight: bold;
@@ -80,7 +68,7 @@
         text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
     button:hover { 
-        background: var(--accent-hover); 
+        background: var(--accent-hover);
         transform: translateY(-2px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
@@ -124,6 +112,7 @@
         background: var(--warning-hover);
     }
     .status {
+        font-family: var(--font-bold);
         padding: 10px;
         border-radius: 5px;
         margin: 10px 0;
@@ -175,21 +164,8 @@
         padding-bottom: 10px;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
     }
-    .toggle-switch {
-        display: flex;
-        align-items: center;
-        margin: 10px 0;
-    }
-    .toggle-switch input[type="checkbox"] {
-        margin-right: 10px;
-        transform: scale(1.5);
-        cursor: pointer;
-    }
-    .toggle-switch label {
-        color: var(--text-primary);
-        cursor: pointer;
-    }
     .app-status {
+        font-family: var(--font-bold);
         text-align: center;
         padding: 15px;
         margin: 10px 0;
@@ -221,6 +197,7 @@
         border: 2px solid var(--info-border);
     }
     .instructions a {
+        font-family: var(--font-bold);
         color: var(--text-primary);
         text-decoration: underline;
         font-weight: bold;
@@ -253,17 +230,6 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 20px;
-    }
-    .save-all-button {
-        background: var(--success-border);
-        color: var(--text-on-dark);
-        font-size: 18px;
-        padding: 15px;
-        margin-top: 30px;
-        border: 3px solid var(--border-color);
-    }
-    .save-all-button:hover {
-        background: var(--success-hover);
     }
     .progress-bar-pulse {
         animation: pulse 2s infinite;
@@ -379,7 +345,7 @@
         text-shadow: 0 0 8px var(--success-color);
     }
     .paused {
-        color: var(--text-secondary);
+        color: var(--error-bg);
     }
     #progressBarContainer {
         transition: all 0.2s ease;
@@ -524,7 +490,7 @@
                     <button type="button" class="btn-success" onclick="spotifyControl('play')" title="Play" id="playBtn">
                         ▶ Play
                     </button>
-                    <button type="button" class="btn-warning" onclick="spotifyControl('pause')" title="Pause" id="pauseBtn">
+                    <button type="button" class="btn-danger" onclick="spotifyControl('pause')" title="Pause" id="pauseBtn">
                         ⏸ Pause
                     </button>
                     <button type="button" class="btn-secondary" onclick="spotifyControl('next')" title="Next Track">
@@ -588,27 +554,9 @@
                 </a>
             {% endif %}
             <a href="/advanced_config">
-                <button type="button" class="btn-secondary">⚙ Advanced Configuration</button>
+                <button type="button" class="btn-secondary">⚙ Configuration</button>
             </a>
         </div>
-        <form method="POST" action="/save_all_config">
-            <div class="section">
-                <h2>⚡ Auto-start Configuration</h2>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="auto_start_hud" name="auto_start_hud" {% if auto_config.auto_start_hud %}checked{% endif %}>
-                    <label for="auto_start_hud">Auto-start hud Display on boot</label>
-                </div>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="auto_start_neonwifi" name="auto_start_neonwifi" {% if auto_config.auto_start_neonwifi %}checked{% endif %}>
-                    <label for="auto_start_neonwifi">Auto-start WiFi Manager on boot</label>
-                </div>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="check_internet" name="check_internet" {% if auto_config.check_internet %}checked{% endif %}>
-                    <label for="check_internet">Wait for internet connection before starting hud</label>
-                </div>
-            </div>
-            <button type="submit" class="save-all-button">▣ Save Auto-start Settings</button>
-        </form>
         <div class="section">
             <form action="/view_logs" method="GET" style="display: flex; gap: 10px; align-items: center;">
                 <button type="submit" class="btn-secondary">▤ View Logs</button>
