@@ -582,24 +582,6 @@
                 <button type="button" class="btn-secondary">⚙ Advanced Configuration</button>
             </a>
         </div>
-        <form method="POST" action="/save_all_config">
-            <div class="section">
-                <h2>⚡ Auto-start Configuration</h2>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="auto_start_hud" name="auto_start_hud" {% if auto_config.auto_start_hud %}checked{% endif %}>
-                    <label for="auto_start_hud">Auto-start hud Display on boot</label>
-                </div>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="auto_start_neonwifi" name="auto_start_neonwifi" {% if auto_config.auto_start_neonwifi %}checked{% endif %}>
-                    <label for="auto_start_neonwifi">Auto-start WiFi Manager on boot</label>
-                </div>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="check_internet" name="check_internet" {% if auto_config.check_internet %}checked{% endif %}>
-                    <label for="check_internet">Wait for internet connection before starting hud</label>
-                </div>
-            </div>
-            <button type="submit" class="save-all-button">▣ Save Auto-start Settings</button>
-        </form>
         <div class="section">
             <form action="/view_logs" method="GET" style="display: flex; gap: 10px; align-items: center;">
                 <button type="submit" class="btn-secondary">▤ View Logs</button>

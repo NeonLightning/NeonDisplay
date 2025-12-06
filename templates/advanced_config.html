@@ -511,6 +511,24 @@
                     </div>
                 </div>
             </div>
+            <div class="section">
+                <h2>⚡ Auto-start Configuration</h2>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="auto_start_hud" name="auto_start_hud" 
+                        {% if config.auto_start.auto_start_hud %}checked{% endif %}>
+                    <label for="auto_start_hud">Auto-start hud Display on boot</label>
+                </div>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="auto_start_neonwifi" name="auto_start_neonwifi" 
+                        {% if config.auto_start.auto_start_neonwifi %}checked{% endif %}>
+                    <label for="auto_start_neonwifi">Auto-start WiFi Manager on boot</label>
+                </div>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="check_internet" name="check_internet" 
+                        {% if config.auto_start.check_internet %}checked{% endif %}>
+                    <label for="check_internet">Wait for internet connection before starting hud</label>
+                </div>
+            </div>
             <div style="text-align: center; margin-top: 30px;">
                 <button type="submit" class="btn-success">▣ Save Advanced Configuration</button>
                 <button type="button" class="btn-secondary" onclick="location.href='/'">← Back to Main</button>
