@@ -15,55 +15,159 @@
 }
 
 :root {
+    /* ===== FONTS ===== */
     --font-primary: 'Ldfcomicsanslight', monospace;
     --font-bold: 'Ldfcomicsansbold', monospace;
-    --bg-primary: #1a0000;
-    --bg-secondary: #4d4d00;
-    --bg-tertiary: #330000;
-    --text-primary: #ffff00;
-    --text-secondary: #ffcc00;
-    --accent-color: #ff0000;
-    --accent-hover: #cc0000;
-    --border-color: #ff0000;
-    --success-bg: #4d4d00;
-    --success-border: #ffff00;
-    --error-bg: #660000;
-    --error-border: #ff0000;
-    --warning-bg: #663300;
-    --warning-border: #ff6600;
-    --info-bg: #330000;
-    --info-border: #ff0000;
-    --card-bg: #4d4d00;
-    --log-bg: #000000;
-    --success-color: #866b00;
-    --warning-color: #ff9900;
-    --text-on-dark: #FFFFFF;
+
+    /* ===== BASE COLORS ===== */
+    --color-bg-base: #1a0000;
+    --color-bg-elevated: #4d4d00;
+    --color-bg-overlay: #330000;
+    --color-text-primary: #ffff00;
+    --color-text-secondary: #ffcc00;
+    --color-text-tertiary: #866b00;
+    --color-border-default: #ff0000;
+    --color-border-subtle: #4d4d00;
+    --color-border-strong: #ff0000;
+
+    /* ===== INTERACTIVE COLORS ===== */
+    --color-primary: #ff0000;
+    --color-primary-hover: #cc0000;
+    --color-primary-active: #990000;
+    --color-primary-text: #000000;
+    --color-secondary: #4d4d00;
+    --color-secondary-hover: #666600;
+    --color-secondary-active: #333300;
+    --color-secondary-text: #ffff00;
+
+    /* ===== STATUS COLORS ===== */
+    --color-success: #ffff00;
+    --color-success-bg: #4d4d00;
+    --color-success-border: #ffff00;
+    --color-success-text: #866b00;
+    --color-error: #ff0000;
+    --color-error-bg: #660000;
+    --color-error-border: #ff0000;
+    --color-error-text: #ffffff;
+    --color-warning: #ff6600;
+    --color-warning-bg: #663300;
+    --color-warning-border: #ff6600;
+    --color-warning-text: #ff9900;
+    --color-info: #ff0000;
+    --color-info-bg: #330000;
+    --color-info-border: #ff0000;
+    --color-info-text: #ffff00;
+
+    /* ===== COMPONENT-SPECIFIC ===== */
+    --color-card-bg: #4d4d00;
+    --color-card-border: #ff0000;
+    --color-log-bg: #000000;
+    --color-log-text: #ffff00;
+    --color-input-bg: #4d4d00;
+    --color-input-border: #ff0000;
+    --color-input-text: #ffff00;
+    --color-input-placeholder: #ffcc00;
+
+    /* ===== LEGACY MAPPINGS (for backwards compatibility) ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: var(--color-text-primary);
     --text-on-light: #000000;
-    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
+    --text-secondary-on-dark: var(--color-text-secondary);
 }
 
 [data-theme="light"] {
-    --bg-primary: #ffff00;
-    --bg-secondary: #ff0000;
-    --bg-tertiary: #ffcc00;
-    --text-primary: #000000;
-    --text-secondary: #4d0000;
-    --accent-color: #ff0000;
-    --accent-hover: #cc0000;
-    --border-color: #000000;
-    --success-bg: #ff0000;
-    --success-border: #000000;
-    --error-bg: #990000;
-    --error-border: #000000;
-    --warning-bg: #ff6600;
-    --warning-border: #000000;
-    --info-bg: #ff6666;
-    --info-border: #000000;
-    --card-bg: #ff0000;
-    --log-bg: #ff0000;
-    --success-color: #ffcc00;
-    --warning-color: #ff6600;
-    --text-on-dark: #FFFFFF;
-    --text-on-light: #000000;
-    --text-secondary-on-dark: rgba(255, 255, 255, 0.9);
+    /* Hotdog Stand Light Mode (still ridiculous but consistent layout) */
+
+    /* ===== BASE COLORS ===== */
+    --color-bg-base: #ffff00;
+    --color-bg-elevated: #ff0000;
+    --color-bg-overlay: #ffcc00;
+    --color-text-primary: #000000;
+    --color-text-secondary: #4d0000;
+    --color-text-tertiary: #330000;
+    --color-border-default: #000000;
+    --color-border-subtle: #330000;
+    --color-border-strong: #000000;
+
+    /* ===== INTERACTIVE COLORS ===== */
+    --color-primary: #ff0000;
+    --color-primary-hover: #cc0000;
+    --color-primary-active: #990000;
+    --color-primary-text: #000000;
+    --color-secondary: #ffcc00;
+    --color-secondary-hover: #ffdd33;
+    --color-secondary-active: #e6b800;
+    --color-secondary-text: #000000;
+
+    /* ===== STATUS COLORS ===== */
+    --color-success: #ffcc00;
+    --color-success-bg: #ff0000;
+    --color-success-border: #000000;
+    --color-success-text: #000000;
+    --color-error: #990000;
+    --color-error-bg: #ff0000;
+    --color-error-border: #000000;
+    --color-error-text: #000000;
+    --color-warning: #ff6600;
+    --color-warning-bg: #ff6600;
+    --color-warning-border: #000000;
+    --color-warning-text: #000000;
+    --color-info: #ff6666;
+    --color-info-bg: #ff0000;
+    --color-info-border: #000000;
+    --color-info-text: #000000;
+
+    /* ===== COMPONENT-SPECIFIC ===== */
+    --color-card-bg: #ff0000;
+    --color-card-border: #000000;
+    --color-log-bg: #ff0000;
+    --color-log-text: #000000;
+    --color-input-bg: #ffcc00;
+    --color-input-border: #000000;
+    --color-input-text: #000000;
+    --color-input-placeholder: #4d0000;
+
+    /* ===== LEGACY MAPPINGS ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: #ffffff;
+    --text-on-light: var(--color-text-primary);
+    --text-secondary-on-dark: var(--color-text-secondary);
 }

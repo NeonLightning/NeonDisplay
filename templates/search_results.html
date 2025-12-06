@@ -10,8 +10,8 @@
     body {
             margin: 0;
             padding: 20px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
             transition: all 0.3s ease;
         }
         .container {
@@ -24,9 +24,9 @@
             align-items: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
             border-radius: 8px;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
         }
         .search-container {
             display: flex;
@@ -41,25 +41,25 @@
         .search-row input {
             flex: 3;
             padding: 12px;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
             border-radius: 5px;
-            background: var(--bg-secondary);
-            color: var(--text-primary);
+            background: var(--color-input-bg);
+            color: var(--color-input-text);
             font-size: 16px;
             transition: all 0.3s ease;
         }
         .search-row input:focus {
-            border-color: var(--accent-color);
+            border-color: var(--color-primary);
             outline: none;
-            box-shadow: 0 0 8px var(--accent-color);
+            box-shadow: 0 0 8px var(--color-primary);
         }
         .search-row button {
             font-family: var(--font-bold);
             flex: 1;
             padding: 12px 20px;
-            background: var(--accent-color);
-            color: var(--text-on-dark);
-            border: 2px solid var(--border-color);
+            background: var(--color-primary);
+            color: var(--color-text-primary);
+            border: 2px solid var(--color-border-default);
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
@@ -67,10 +67,10 @@
             min-width: unset;
         }
         .search-row button:hover {
-            background: var(--accent-hover);
+            background: var(--color-primary-hover);
         }
         .search-row button:disabled {
-            background: var(--border-color);
+            background: var(--color-border-default);
             cursor: not-allowed;
         }
         .content-container {
@@ -80,16 +80,16 @@
             align-items: start;
         }
         .results-container, .queue-container {
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
         }
         .results-container {
             max-height: 70vh;
             overflow-y: auto;
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
             border-radius: 8px;
         }
         .queue-container {
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
             border-radius: 8px;
             max-height: 70vh;
             overflow-y: auto;
@@ -100,7 +100,7 @@
             align-items: center;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 2px solid var(--accent-color);
+            border-bottom: 2px solid var(--color-primary);
             gap: 10px;
         }
         .queue-header button {
@@ -112,31 +112,34 @@
             font-weight: bold;
             flex-shrink: 0;
             border: none;
-            color: var(--text-on-dark);
+            color: var(--color-text-primary);
             min-width: unset;
         }
         .refresh-button {
-            background: var(--accent-color);
+            background: var(--color-primary);
+        }
+        .refresh-button:hover {
+            background: var(--color-primary-hover);
         }
         .shuffle-button {
-            background: var(--accent-color);
+            background: var(--color-primary);
         }
         .shuffle-button.active {
-            background: var(--success-color);
+            background: var(--color-success);
         }
-        .queue-header button:hover {
+        .shuffle-button:hover {
             filter: brightness(1.1);
         }
         .result-item {
             display: flex;
             align-items: center;
             padding: 15px;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--color-border-default);
             gap: 15px;
             transition: background 0.2s ease;
         }
         .result-item:hover {
-            background: var(--bg-tertiary);
+            background: var(--color-bg-overlay);
         }
         .result-item:last-child {
             border-bottom: none;
@@ -145,28 +148,28 @@
             display: flex;
             align-items: center;
             padding: 12px;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--color-border-default);
             gap: 12px;
             transition: background 0.2s ease;
         }
         .queue-item:hover {
-            background: var(--bg-tertiary);
+            background: var(--color-bg-overlay);
         }
         .queue-item:last-child {
             border-bottom: none;
         }
         .queue-item.current {
-            background: var(--bg-tertiary);
-            color: var(--text-on-dark);
+            background: var(--color-bg-overlay);
+            color: var(--color-text-primary);
             border-radius: 6px;
             margin: 5px 0;
         }
         .queue-item.current .track-name {
-            color: var(--text-on-dark);
+            color: var(--color-text-primary);
         }
         .queue-item.current .track-artists,
         .queue-item.current .track-album {
-            color: var(--text-secondary-on-dark, var(--text-on-dark)); 
+            color: var(--color-text-secondary); 
         }
         .track-art {
             width: 60px;
@@ -183,29 +186,29 @@
             flex-shrink: 0;
         }
         .track-art, .queue-art {
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
         }
         .track-art-placeholder {
             width: 60px;
             height: 60px;
-            background: var(--bg-tertiary);
+            background: var(--color-bg-overlay);
             border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
             font-size: 20px;
             flex-shrink: 0;
         }
         .queue-art-placeholder {
             width: 40px;
             height: 40px;
-            background: var(--bg-tertiary);
+            background: var(--color-bg-overlay);
             border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
             font-size: 14px;
             flex-shrink: 0;
         }
@@ -216,7 +219,7 @@
         .track-name {
             font-family: var(--font-bold);
             font-weight: bold;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
             margin-bottom: 5px;
             font-size: 16px;
             white-space: nowrap;
@@ -226,7 +229,7 @@
         .queue-name {
             font-family: var(--font-bold);
             font-weight: bold;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
             margin-bottom: 3px;
             font-size: 14px;
             white-space: nowrap;
@@ -234,7 +237,7 @@
             text-overflow: ellipsis;
         }
         .track-artists, .track-album, .queue-artists, .queue-album {
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
             font-size: 12px;
             white-space: nowrap;
             overflow: hidden;
@@ -247,18 +250,18 @@
         }
         .playlist-meta {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
             margin-top: 4px;
         }
         .playlist-owner {
             font-family: var(--font-bold);
-            color: var(--accent-color);
+            color: var(--color-primary);
             font-weight: bold;
         }
         .play-button {
             padding: 8px 16px;
-            background: var(--accent-color);
-            color: var(--text-on-dark);
+            background: var(--color-primary);
+            color: var(--color-text-primary);
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -266,12 +269,12 @@
             white-space: nowrap;
         }
         .play-button:hover {
-            background: var(--accent-hover);
+            background: var(--color-primary-hover);
         }
         .queue-button {
             padding: 8px 12px;
-            background: var(--warning-color);
-            color: var(--text-on-light);
+            background: var(--color-warning);
+            color: var(--color-warning-text);
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -279,11 +282,12 @@
             white-space: nowrap;
         }
         .queue-button:hover {
-            background: var(--warning-border);
+            background: var(--color-warning);
+            filter: brightness(1.2);
         }
         .play-button:disabled,
         .queue-button:disabled {
-            background: var(--border-color);
+            background: var(--color-border-default);
             cursor: not-allowed;
         }
         .status {
@@ -296,23 +300,23 @@
             font-weight: bold;
         }
         .status.info {
-            background: var(--info-bg);
-            color: var(--text-on-dark);
-            border-color: var(--info-border);
+            background: var(--color-info-bg);
+            color: var(--color-info-text);
+            border-color: var(--color-info-border);
         }
         .status.success {
-            background: var(--success-bg);
-            color: var(--text-primary);
-            border-color: var(--success-border);
+            background: var(--color-success-bg);
+            color: var(--color-success-text);
+            border-color: var(--color-success-border);
         }
         .status.error {
-            background: var(--error-bg);
-            color: var(--text-on-dark);
-            border-color: var(--error-border);
+            background: var(--color-error-bg);
+            color: var(--color-error-text);
+            border-color: var(--color-error-border);
         }
         .back-button {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
+            background: var(--color-bg-overlay);
+            color: var(--color-text-primary);
             border: none;
             padding: 10px 15px;
             border-radius: 5px;
@@ -321,28 +325,22 @@
             display: inline-block;
         }
         .back-button:hover {
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
         }
         .empty-state {
             padding: 40px;
             text-align: center;
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
         }
         .empty-icon {
             font-size: 48px;
             margin-bottom: 10px;
         }
-        .refresh-button {
-            background: var(--accent-color);
-        }
-        .refresh-button:hover {
-            background: var(--accent-hover);
-        }
         .theme-toggle {
             font-family: var(--font-bold);
-            background: var(--accent-color);
-            color: var(--text-on-dark);
-            border: 2px solid var(--border-color);
+            background: var(--color-primary);
+            color: var(--color-text-primary);
+            border: 2px solid var(--color-border-default);
             padding: 8px 12px;
             border-radius: 20px;
             cursor: pointer;
@@ -351,7 +349,7 @@
             margin-left: 10px;
         }
         .theme-toggle:hover {
-            background: var(--accent-hover);
+            background: var(--color-primary-hover);
         }
         @media (max-width: 768px) {
             .content-container {

@@ -8,41 +8,41 @@
             font-family: var(--font-primary); 
         }
         p {
-            color: var(--text-secondary)
+            color: var(--color-text-secondary)
         }
         body {
             max-width: 100%;
             margin: 0;
             padding: 20px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
+            background: var(--color-bg-base);
+            color: var(--color-text-primary);
             transition: all 0.3s ease;
         }
         .container {
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
             padding: 30px;
             border-radius: 0;
             box-shadow: none;
-            border: 3px solid var(--border-color);
+            border: 3px solid var(--color-border-default);
             max-width: 100%;
         }
         h1 {
             text-align: center;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
             margin-bottom: 30px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
         .section {
-            background: var(--bg-tertiary);
+            background: var(--color-bg-overlay);
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 30px;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
         }
         .section h2 {
             margin-top: 0;
-            color: var(--text-primary);
-            border-bottom: 2px solid var(--border-color);
+            color: var(--color-text-primary);
+            border-bottom: 2px solid var(--color-border-default);
             padding-bottom: 10px;
         }
         .form-group {
@@ -53,26 +53,26 @@
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
-            color: var(--text-primary);
+            color: var(--color-text-primary);
         }
         input[type="text"], input[type="number"], input[type="password"], textarea, select {
             width: 100%;
             padding: 10px;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
             border-radius: 5px;
             box-sizing: border-box;
             font-size: 16px;
-            background: var(--bg-secondary);
-            color: var(--text-primary);
+            background: var(--color-input-bg);
+            color: var(--color-input-text);
             transition: all 0.3s ease;
         }
         input[type="text"]:focus, input[type="number"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
-            border-color: var(--accent-color);
+            border-color: var(--color-primary);
             outline: none;
-            box-shadow: 0 0 8px var(--accent-color);
+            box-shadow: 0 0 8px var(--color-primary);
         }
         .instructions a {
-            color: var(--text-primary);
+            color: var(--color-info-text);
             text-decoration: underline;
         }
         .toggle-switch {
@@ -90,7 +90,7 @@
             cursor: pointer;
         }
         small {
-            color: var(--text-secondary);
+            color: var(--color-text-secondary);
             display: block;
             margin-top: 5px;
         }
@@ -101,9 +101,9 @@
         }
         button {
             font-family: var(--font-bold);
-            background: var(--accent-color);
-            color: var(--text-on-dark);
-            border: 2px solid var(--border-color);
+            background: var(--color-primary);
+            color: var(--color-text-primary);
+            border: 2px solid var(--color-border-default);
             padding: 12px 20px;
             border-radius: 5px;
             cursor: pointer;
@@ -113,20 +113,31 @@
             font-weight: bold;
         }
         button:hover {
-            background: var(--accent-hover);
+            background: var(--color-primary-hover);
             transform: translateY(-2px);
         }
         .btn-secondary {
-            background: var(--button-secondary-bg);
-            color: var(--button-secondary-text);
+            background: var(--color-secondary);
+            color: var(--color-text-primary);
+        }
+        .btn-secondary:hover {
+            background: var(--color-secondary-hover);
         }
         .btn-success {
-            background: var(--success-border);
-            color: var(--success-color);
+            background: var(--color-success);
+            color: var(--color-success-text);
+        }
+        .btn-success:hover {
+            background: var(--color-success);
+            filter: brightness(1.2);
         }
         .btn-danger {
-            background: var(--error-border);
-            color: var(--text-on-dark);
+            background: var(--color-error);
+            color: var(--color-error-text);
+        }
+        .btn-danger:hover {
+            background: var(--color-error);
+            filter: brightness(1.2);
         }
         .status {
             padding: 10px;
@@ -135,23 +146,23 @@
             text-align: center;
         }
         .status.success {
-            background: var(--success-bg);
-            color: var(--text-primary);
-            border: 2px solid var(--success-border);
+            background: var(--color-success-bg);
+            color: var(--color-success-text);
+            border: 2px solid var(--color-success-border);
         }
         .status.error {
-            background: var(--error-bg);
-            color: var(--text-on-dark);
-            border: 2px solid var(--error-border);
+            background: var(--color-error-bg);
+            color: var(--color-error-text);
+            border: 2px solid var(--color-error-border);
         }
         .theme-toggle {
             font-family: var(--font-bold);
             position: fixed;
             top: 20px;
             right: 20px;
-            background: var(--accent-color);
-            color: var(--text-on-dark);
-            border: 2px solid var(--border-color);
+            background: var(--color-primary);
+            color: var(--color-text-primary);
+            border: 2px solid var(--color-border-default);
             padding: 8px 12px;
             border-radius: 20px;
             cursor: pointer;
@@ -166,23 +177,23 @@
             margin: 20px 0;
         }
         .button-config {
-            background: var(--bg-secondary);
+            background: var(--color-bg-elevated);
             padding: 15px;
             border-radius: 8px;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--color-border-default);
         }
         .button-config h4 {
             margin-top: 0;
-            color: var(--accent-color);
+            color: var(--color-primary);
         }
         .instructions {
-            background: var(--info-bg);
+            background: var(--color-info-bg);
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 15px;
             font-size: 14px;
-            color: var(--text-on-dark);
-            border: 2px solid var(--info-border);
+            color: var(--color-info-text);
+            border: 2px solid var(--color-info-border);
         }
     </style>
 </head>
