@@ -2617,12 +2617,6 @@ else:
     TEXT_SCROLL_FPS = 15
 ANIMATION_FRAME_TIME = 1.0 / ANIMATION_FPS
 TEXT_SCROLL_FRAME_TIME = 1.0 / TEXT_SCROLL_FPS
-LARGE_FONT = ImageFont.truetype(config["fonts"]["large_font_path"], config["fonts"]["large_font_size"])
-MEDIUM_FONT = ImageFont.truetype(config["fonts"]["medium_font_path"], config["fonts"]["medium_font_size"])
-SMALL_FONT = ImageFont.truetype(config["fonts"]["small_font_path"], config["fonts"]["small_font_size"])
-SPOT_LARGE_FONT = ImageFont.truetype(config["fonts"]["spot_large_font_path"], config["fonts"]["spot_large_font_size"])
-SPOT_MEDIUM_FONT = ImageFont.truetype(config["fonts"]["spot_medium_font_path"], config["fonts"]["spot_medium_font_size"])
-SPOT_SMALL_FONT = ImageFont.truetype(config["fonts"]["spot_small_font_path"], config["fonts"]["spot_small_font_size"])
 OPENWEATHER_API_KEY = config["api_keys"]["openweather"]
 GOOGLE_GEO_API_KEY = config["api_keys"]["google_geo"]
 SPOTIFY_CLIENT_ID = config["api_keys"]["client_id"]

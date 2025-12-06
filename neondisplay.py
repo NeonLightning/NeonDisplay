@@ -86,7 +86,8 @@ DEFAULT_CONFIG = {
     "ui": {
         "theme": "dark",
         "css_file": "colors.css"
-    }
+    },
+    "api_status": {}
 }
 
 hud_process = None
@@ -270,12 +271,31 @@ def save_advanced_config():
     auto_start_neonwifi = 'auto_start_neonwifi' in request.form
     if "ui" not in config:
         config["ui"] = {}
+    if "api_status" not in config:
+        config["api_status"] = {}
     available_css = get_available_css_files()
     selected_css = request.form.get('css_file')
     if selected_css and selected_css in available_css:
         config["ui"]["css_file"] = selected_css
     else:
         config["ui"]["css_file"] = DEFAULT_CONFIG["ui"]["css_file"]
+    openweather_key = request.form.get('openweather', '').strip()
+    google_geo_key = request.form.get('google_geo', '').strip()
+    fallback_input = request.form.get('fallback_city', '').strip()
+    normalized_fallback = ""
+    if fallback_input:
+        is_valid_fallback, fallback_message, normalized_fallback = validate_fallback_city_input(
+            fallback_input,
+            openweather_key or config["api_keys"].get("openweather", "")
+        )
+        if not is_valid_fallback:
+            config["api_status"]["fallback_city"] = _build_api_status("error", fallback_message)
+            save_config(config)
+            flash(fallback_message, 'error')
+            return redirect(url_for('advanced_config'))
+        config["api_status"]["fallback_city"] = _build_api_status("success", f"Using {normalized_fallback}")
+    else:
+        config["api_status"]["fallback_city"] = _build_api_status("info", "No fallback city set")
     try:
         old_display_type = config.get("display", {}).get("type", "framebuffer")
         new_display_type = request.form.get('display_type', 'framebuffer')
@@ -283,12 +303,12 @@ def save_advanced_config():
         if old_display_type != new_display_type:
             if request.form.get('modify_boot_config') == 'true':
                 modify_boot = True
-        config["api_keys"]["openweather"] = request.form.get('openweather', '').strip()
-        config["api_keys"]["google_geo"] = request.form.get('google_geo', '').strip()
+        config["api_keys"]["openweather"] = openweather_key
+        config["api_keys"]["google_geo"] = google_geo_key
         config["api_keys"]["client_id"] = request.form.get('client_id', '').strip()
         config["api_keys"]["client_secret"] = request.form.get('client_secret', '').strip()
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000').strip()
-        config["settings"]["fallback_city"] = request.form.get('fallback_city', '').strip()
+        config["settings"]["fallback_city"] = normalized_fallback
         config["display"]["type"] = new_display_type
         config["display"]["framebuffer"] = request.form.get('framebuffer_device', '/dev/fb1')
         config["display"]["rotation"] = int(request.form.get('rotation', 0))
@@ -320,7 +340,8 @@ def save_advanced_config():
         config["settings"]["time_display"] = 'time_display' in request.form
         config["settings"]["start_screen"] = request.form.get('start_screen', 'weather')
         config["settings"]["use_gpsd"] = 'use_gpsd' in request.form
-        config["settings"]["use_google_geo"] = 'use_google_geo' in request.form
+        use_google_geo = 'use_google_geo' in request.form
+        config["settings"]["use_google_geo"] = use_google_geo
         config["settings"]["enable_current_track_display"] = 'enable_current_track_display' in request.form
         if "logging" not in config:
             config["logging"] = {}
@@ -335,21 +356,36 @@ def save_advanced_config():
             "auto_start_neonwifi": auto_start_neonwifi,
             "check_internet": 'check_internet' in request.form
         }
+        if use_google_geo:
+            if google_geo_key:
+                success, status_message = validate_google_geo_api_key(google_geo_key)
+                status_state = "success" if success else "error"
+            else:
+                status_state = "error"
+                status_message = "Google Geolocation enabled but no API key configured"
+        else:
+            if google_geo_key:
+                status_state = "info"
+                status_message = "Google Geolocation disabled (key stored but unused)"
+            else:
+                status_state = "info"
+                status_message = "Google Geolocation disabled"
+        config["api_status"]["google_geo"] = _build_api_status(status_state, status_message)
         if modify_boot and old_display_type != new_display_type:
             enable_fb = (new_display_type == "framebuffer")
             success, message = modify_boot_config(enable_fb)
             if success:
-                flash('success', f'Configuration saved! {message} Please restart hud for display changes to take effect.')
+                flash(f'Configuration saved! {message} Please restart hud for display changes to take effect.', 'success')
             else:
-                flash('warning', f'Configuration saved but boot config modification failed: {message}')
+                flash(f'Configuration saved but boot config modification failed: {message}', 'warning')
         elif old_display_type != new_display_type:
-            flash('success', 'Configuration saved! Please restart hud for display changes to take effect.')
+            flash('Configuration saved! Please restart hud for display changes to take effect.', 'success')
         else:
-            flash('success', 'Advanced configuration saved successfully!')
+            flash('Advanced configuration saved successfully!', 'success')
         save_config(config)
         restart_processes_after_config()
     except Exception as e:
-        flash('error', f'Error saving configuration: {str(e)}')
+        flash(f'Error saving configuration: {str(e)}', 'error')
     return redirect(url_for('advanced_config'))
 
 @app.route('/toggle_theme', methods=['POST'])
@@ -1283,11 +1319,93 @@ def load_config():
         return DEFAULT_CONFIG.copy()
     try:
         with open(CONFIG_PATH, 'r') as f:
-            return toml.load(f)
+            config = toml.load(f)
+            if "api_status" not in config:
+                config["api_status"] = {}
+            return config
     except Exception as e:
         print(f"Error loading config: {e}")
         print("Using default configuration")
         return DEFAULT_CONFIG.copy()
+
+
+def _build_api_status(state, message):
+    return {
+        "state": state,
+        "message": message,
+        "checked_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    }
+
+
+def validate_google_geo_api_key(api_key):
+    if not api_key:
+        return False, "No API key configured"
+    url = "https://www.googleapis.com/geolocation/v1/geolocate"
+    try:
+        response = requests.post(f"{url}?key={api_key}", json={}, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            accuracy = data.get("accuracy")
+            if accuracy is not None:
+                return True, f"Success (±{int(accuracy)}m accuracy)"
+            return True, "Success"
+        try:
+            error_payload = response.json()
+            message = error_payload.get('error', {}).get('message', response.text)
+        except ValueError:
+            message = response.text
+        return False, f"{response.status_code}: {message.strip()}"
+    except requests.exceptions.RequestException as exc:
+        return False, f"Request failed: {exc}"
+
+
+def validate_fallback_city_input(city_value, openweather_key):
+    if not city_value:
+        return False, "Fallback city is required in the format City,Country or City,State,Country", None
+    parts = [part.strip() for part in city_value.split(',') if part.strip()]
+    if len(parts) < 2:
+        return False, "Fallback city must include at least City and Country (e.g., London,UK)", None
+    if len(parts) > 3:
+        return False, "Too many commas. Use City,Country or City,State,Country", None
+
+    city = parts[0]
+    state = None
+
+    if len(parts) == 2:
+        country = parts[1]
+    else:
+        state = parts[1]
+        country = parts[2]
+
+    if len(country) != 2 or not country.isalpha():
+        return False, "Country must be a two-letter ISO code (e.g., US, UK, DE)", None
+    country = country.upper()
+    if state:
+        if len(state) != 2 or not state.isalpha():
+            return False, "State must be a two-letter code (e.g., IA, CA)", None
+        state = state.upper()
+
+    normalized_parts = [city]
+    if state:
+        normalized_parts.append(state)
+    normalized_parts.append(country)
+    normalized_value = ", ".join(normalized_parts)
+
+    if not openweather_key:
+        return False, "OpenWeather API key required to validate fallback city", None
+    try:
+        response = requests.get(
+            "http://api.openweathermap.org/geo/1.0/direct",
+            params={"q": normalized_value, "limit": 1, "appid": openweather_key},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not data:
+            return False, "Error. Format: City, Country. For US: City, State, Country.", None
+        return True, "Fallback city validated with OpenWeather", normalized_value
+    except requests.exceptions.RequestException as exc:
+        return False, f"Failed to validate fallback city: {exc}", None
 
 def modify_boot_config(enable_framebuffer):
     logger = logging.getLogger('Launcher')
