@@ -1,4 +1,22 @@
+@font-face {
+    font-family: 'Ldfcomicsanslight';
+    src: url('/static/font/Ldfcomicsanslight.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ldfcomicsansbold';
+    src: url('/static/font/Ldfcomicsansbold.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
+    --font-primary: 'Ldfcomicsanslight', monospace;
+    --font-bold: 'Ldfcomicsansbold', monospace;
     --bg-primary: #1a0000;
     --bg-secondary: #4d4d00;
     --bg-tertiary: #330000;

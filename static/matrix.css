@@ -1,4 +1,22 @@
+@font-face {
+    font-family: 'MatrixUnivga';
+    src: url('/static/font/mx_univga.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'MatrixUnivgaBold';
+    src: url('/static/font/mx_univga.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
+    --font-primary: 'MatrixUnivga', monospace;
+    --font-bold: 'MatrixUnivgaBold', monospace;
     --bg-primary: #000000;
     --bg-secondary: #003B00; 
     --bg-tertiary: #001A00; 
@@ -25,6 +43,8 @@
 }
 
 [data-theme="light"] {
+    --font-primary: 'MatrixUnivga', monospace;
+    --font-bold: 'MatrixUnivgaBold', monospace;
     --bg-primary: #00FF41;
     --bg-secondary: #FFFFFF;
     --bg-tertiary: #CCFFCC;

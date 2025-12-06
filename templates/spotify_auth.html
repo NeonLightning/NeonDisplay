@@ -4,8 +4,10 @@
     <title>Spotify Authentication</title>
     <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
+        * {
+            font-family: var(--font-primary); 
+        }
+        body {
             max-width: 100%;
             margin: 0;
             padding: 20px;
@@ -38,6 +40,7 @@
             box-sizing: border-box;
         }
         .styled-button {
+            font-family: var(--font-bold);
             background: var(--accent-color);
             color: var(--text-primary);
             border: 2px solid var(--border-color); 

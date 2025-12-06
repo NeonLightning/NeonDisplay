@@ -4,8 +4,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename=ui_config.css_file) }}">
     <title>Search Results - NeonDisplay</title>
     <style>
+    * {
+        font-family: var(--font-primary);
+    }
     body {
-            font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
             background: var(--bg-primary);
@@ -52,6 +54,7 @@
             box-shadow: 0 0 8px var(--accent-color);
         }
         .search-row button {
+            font-family: var(--font-bold);
             flex: 1;
             padding: 12px 20px;
             background: var(--accent-color);
@@ -101,6 +104,7 @@
             gap: 10px;
         }
         .queue-header button {
+            font-family: var(--font-bold);
             padding: 8px 12px;
             border-radius: 4px;
             cursor: pointer;
@@ -210,6 +214,7 @@
             min-width: 0;
         }
         .track-name {
+            font-family: var(--font-bold);
             font-weight: bold;
             color: var(--text-primary);
             margin-bottom: 5px;
@@ -219,6 +224,7 @@
             text-overflow: ellipsis;
         }
         .queue-name {
+            font-family: var(--font-bold);
             font-weight: bold;
             color: var(--text-primary);
             margin-bottom: 3px;
@@ -245,6 +251,7 @@
             margin-top: 4px;
         }
         .playlist-owner {
+            font-family: var(--font-bold);
             color: var(--accent-color);
             font-weight: bold;
         }
@@ -280,6 +287,7 @@
             cursor: not-allowed;
         }
         .status {
+            font-family: var(--font-bold);
             padding: 10px;
             border-radius: 5px;
             margin: 10px 0;
@@ -331,6 +339,7 @@
             background: var(--accent-hover);
         }
         .theme-toggle {
+            font-family: var(--font-bold);
             background: var(--accent-color);
             color: var(--text-on-dark);
             border: 2px solid var(--border-color);
