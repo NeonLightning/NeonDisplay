@@ -148,18 +148,6 @@ def generate_chart_data(stats, label_type):
         'label_type': label_type
     }
 
-def get_active_device(sp):
-    try:
-        devices = sp.devices()
-        if devices['devices']:
-            for device in devices['devices']:
-                if device.get('is_active'):
-                    return device['id']
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error getting active device: {e}")
-    return None
-
 def get_lastfm_similar_tracks(artist_name, track_name, api_key, limit=50):
     if not api_key:
         return []
@@ -1539,16 +1527,6 @@ def stream_current_track():
     return Response(generate(), mimetype='text/event-stream')
 
 # ============== CONFIGURATION FUNCTIONS ==============
-
-def check_boot_config_line(line_to_check):
-    try:
-        with open('/boot/config.txt', 'r') as f:
-            content = f.read()
-            return line_to_check in content or f'#{line_to_check}' in content
-    except Exception as e:
-        logger = logging.getLogger('Launcher')
-        logger.error(f"Error reading /boot/config.txt: {e}")
-        return False
     
 def get_available_css_files():
     static_dir = app.static_folder 

@@ -220,16 +220,6 @@ def create_fade_mask(art_size, fade_width):
     mask_array = np.tile(combined_alpha, (art_size, 1))
     return Image.fromarray(mask_array, mode='L')
 
-def create_gradient_background(size):
-    width, height = size
-    bg = Image.new("RGB", size, (40, 40, 60))
-    for y in range(height):
-        factor = 0.7 + (y / height) * 0.6
-        for x in range(width):
-            r, g, b = bg.getpixel((x, y))
-            bg.putpixel((x, y), (int(r * factor), int(g * factor), int(b * factor)))
-    return bg
-
 def get_background_path(weather_info):
     if not weather_info:
         candidate = "bg_default.png"
@@ -1298,77 +1288,6 @@ def draw_time_text(time_str, font, color, position_x, position_y):
     text_y = position_y + padding - time_bbox[1]
     draw.text((text_x, text_y), time_str, fill=color, font=font)
     return overlay
-
-def draw_waveshare_album_art(img, album_art_img, album_art_x, album_art_y, album_art_size):
-    if album_art_img is not None:
-        bw_album_art = convert_to_1bit_dithered(album_art_img, (album_art_size, album_art_size))
-        img.paste(bw_album_art, (album_art_x, album_art_y))
-
-def draw_waveshare_border(draw, display_width, display_height):
-    draw.rectangle([0, 0, display_width-1, display_height-1], outline=0, width=2)
-
-def draw_waveshare_time(draw, font_medium, display_width, display_height):
-    now = datetime.datetime.now().strftime("%H:%M")
-    time_bbox = draw.textbbox((0, 0), now, font=font_medium)
-    time_width = time_bbox[2] - time_bbox[0]
-    time_height = time_bbox[3] - time_bbox[1]
-    clock_x = display_width - time_width - 5
-    clock_y = display_height - time_height - 8
-    draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
-
-def draw_waveshare_track_info(draw, spotify_track, font_medium, display_width, display_height):
-    if not spotify_track:
-        if hasattr(draw_waveshare_track_info, 'title_scroll_offset'):
-            draw_waveshare_track_info.title_scroll_offset = 0
-            draw_waveshare_track_info.artist_scroll_offset = 0
-        draw.text((5, 8), "No music playing", font=font_medium, fill=0)
-        return
-    artist = spotify_track.get('artists', 'Unknown Artist')
-    title = spotify_track.get('title', 'No Track')
-    with scroll_lock:
-        if not hasattr(draw_waveshare_track_info, 'title_scroll_offset'):
-            draw_waveshare_track_info.title_scroll_offset = 0
-            draw_waveshare_track_info.artist_scroll_offset = 0
-        title_bbox = draw.textbbox((0, 0), title, font=font_medium)
-        title_width = title_bbox[2] - title_bbox[0]
-        scroll_speed = 4
-        if title_width > display_width - 20:
-            total_scroll_distance = title_width + 15
-            draw_waveshare_track_info.title_scroll_offset = (draw_waveshare_track_info.title_scroll_offset + scroll_speed) % total_scroll_distance
-            title_x = -draw_waveshare_track_info.title_scroll_offset
-            draw.text((title_x, 8), title, font=font_medium, fill=0)
-            draw.text((title_x + total_scroll_distance, 8), title, font=font_medium, fill=0)
-        else:
-            title_x = (display_width - title_width) // 2
-            draw.text((title_x, 8), title, font=font_medium, fill=0)
-        artist_bbox = draw.textbbox((0, 0), artist, font=font_medium)
-        artist_width = artist_bbox[2] - artist_bbox[0]
-        if artist_width > display_width - 20:
-            total_scroll_distance = artist_width + 20
-            draw_waveshare_track_info.artist_scroll_offset = (draw_waveshare_track_info.artist_scroll_offset + scroll_speed) % total_scroll_distance
-            artist_x = -draw_waveshare_track_info.artist_scroll_offset
-            draw.text((artist_x, 25), artist, font=font_medium, fill=0)
-            draw.text((artist_x + total_scroll_distance, 25), artist, font=font_medium, fill=0)
-        else:
-            artist_x = (display_width - artist_width) // 2
-            draw.text((artist_x, 25), artist, font=font_medium, fill=0)
-
-def draw_waveshare_weather_info(draw, weather_info, font_small, font_large, display_height):
-    if not weather_info:
-        return
-    weather_icon_x = 8
-    weather_icon_y = display_height - 55
-    if "cached_icon" in weather_info and weather_info["cached_icon"] is not None:
-        try:
-            img.paste(weather_info["cached_icon"], (weather_icon_x, weather_icon_y))
-        except Exception as e:
-            print(f"Error pasting cached weather icon: {e}")
-    temp_text = f"{weather_info['temp']}°C"
-    draw.text((45, display_height - 55), temp_text, font=font_large, fill=0)
-    feels_like_text = f"Feels: {weather_info['feels_like']}°C"
-    draw.text((45, display_height - 35), feels_like_text, font=font_small, fill=0)
-    desc_text = weather_info['description'][:15]
-    draw.text((45, display_height - 20), desc_text, font=font_small, fill=0)
 
 def draw_weather_icon(img, weather_info):
     if "icon_id" in weather_info:
