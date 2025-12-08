@@ -275,7 +275,10 @@
                                 {% endif %}
                             </label>
                             <input type="text" id="google_geo" name="google_geo" value="{{ config.api_keys.google_geo }}" placeholder="Enter Google Geolocation API key">
-                            <small>Optional - for precise location without GPS</small>
+                        </div>
+                        <div>
+                            <label for="lastfm">Lastfm API Key:</label>
+                            <input type="text" id="lastfm" name="lastfm" value="{{ config.api_keys.lastfm }}" placeholder="Enter Lastfm API key">
                         </div>
                     </div>
                     <div>
@@ -291,7 +294,6 @@
                         <div class="form-group">
                             <label for="redirect_uri">Spotify Redirect URI:</label>
                             <input type="text" id="redirect_uri" name="redirect_uri" value="{{ config.api_keys.redirect_uri }}">
-                            <small>OAuth redirect URI for Spotify</small>
                         </div>
                     </div>
                 </div>

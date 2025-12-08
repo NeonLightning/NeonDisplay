@@ -1544,7 +1544,6 @@ def is_config_ready():
         config["api_keys"]["openweather"],
         config["api_keys"]["client_id"], 
         config["api_keys"]["client_secret"],
-        config["api_keys"]["lastfm"]
     ])
 
 def load_config():

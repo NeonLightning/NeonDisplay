@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
         "google_geo": "",
         "client_id": "",
         "client_secret": "",
+        "lastfm": "",
         "redirect_uri": "http://127.0.0.1:5000"
     },
     "settings": {
@@ -851,9 +852,9 @@ def draw_waveshare(weather_info, spotify_track):
     if current_weather_id != draw_waveshare.last_weather_id:
         content_changed = True
         draw_waveshare.last_weather_id = current_weather_id
-    album_art_size = 60
+    album_art_size = 80
     album_art_x = display_width - album_art_size - 3
-    album_art_y = display_height - album_art_size - 20
+    album_art_y = display_height - album_art_size - 3
     if spotify_track:
         artist = spotify_track.get('artists', 'Unknown Artist')
         title = spotify_track.get('title', 'No Track')
@@ -912,8 +913,8 @@ def draw_waveshare(weather_info, spotify_track):
     time_bbox = draw.textbbox((0, 0), now, font=font_medium)
     time_width = time_bbox[2] - time_bbox[0]
     time_height = time_bbox[3] - time_bbox[1]
-    clock_x = display_width - time_width - 5
-    clock_y = display_height - time_height - 8
+    clock_x = 8
+    clock_y = display_height - 75
     draw.text((clock_x, clock_y), now, font=font_medium, fill=0)
     rotation = config.get("display", {}).get("rotation", 0)
     if rotation == 180:
@@ -2529,8 +2530,8 @@ if display_type == "st7789":
     ANIMATION_FPS = 30
     TEXT_SCROLL_FPS = 30
 elif display_type == "waveshare_epd":
-    ANIMATION_FPS = 2
-    TEXT_SCROLL_FPS = 2
+    ANIMATION_FPS = 30
+    TEXT_SCROLL_FPS = 30
 else:
     ANIMATION_FPS = 15
     TEXT_SCROLL_FPS = 15
@@ -2540,6 +2541,7 @@ OPENWEATHER_API_KEY = config["api_keys"]["openweather"]
 GOOGLE_GEO_API_KEY = config["api_keys"]["google_geo"]
 SPOTIFY_CLIENT_ID = config["api_keys"]["client_id"]
 SPOTIFY_CLIENT_SECRET = config["api_keys"]["client_secret"]
+LASTFM = config["api_keys"]["lastfm"]
 REDIRECT_URI = config["api_keys"]["redirect_uri"]
 START_SCREEN = config["settings"]["start_screen"]
 FALLBACK_CITY = config["settings"]["fallback_city"]
