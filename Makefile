@@ -72,7 +72,7 @@ setup-display:
 	@echo "$(GREEN)Installing LCD display drivers...$(NC)"
 	git clone https://github.com/Shinigamy19/RaspberryPi3bplus-3.5inch-displayA-ILI9486-MPI3501-XPT2046   $(LCD_SHOW_DIR)
 	cd LCD-show && chmod +x ./*
-	sudo ./LCD35-show
+	sudo ./LCD-show/LCD35-show
 
 setup-service:
 	@echo "$(GREEN)Setting up systemd service...$(NC)"

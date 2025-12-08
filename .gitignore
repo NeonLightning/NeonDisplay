@@ -5,3 +5,6 @@ config.toml
 song_counts.bin
 screens info.txt
 LCD-show/
+shrunkbackup.img.gz
+backup.img
+/test

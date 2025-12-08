@@ -5,7 +5,7 @@ from datetime import datetime
 from collections import Counter
 from functools import wraps
 from logging.handlers import RotatingFileHandler
-import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil
+import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil, re
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -38,6 +38,7 @@ DEFAULT_CONFIG = {
         "google_geo": "",
         "client_id": "",
         "client_secret": "",
+        "lastfm": "",
         "redirect_uri": "http://127.0.0.1:5000"
     },
     "settings": {
@@ -96,6 +97,139 @@ last_logged_song = None
 
 # ============== HELPER FUNCTIONS ==============
 
+def delete_existing_playlist(playlist_name, sp):
+    user_id = sp.current_user()["id"]
+    logger = logging.getLogger('Launcher')
+    all_playlists = []
+    results = sp.current_user_playlists(limit=50)
+    all_playlists.extend(results['items'])
+    while results['next']:
+        results = sp.next(results)
+        all_playlists.extend(results['items'])
+    matching_playlists = []
+    for playlist in all_playlists:
+        if (playlist['name'].lower() == playlist_name.lower() and 
+            playlist['owner']['id'] == user_id):
+            matching_playlists.append(playlist)
+    deleted_count = 0
+    for playlist in matching_playlists:
+        try:
+            sp.current_user_unfollow_playlist(playlist['id'])
+            deleted_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to delete playlist via Spotipy: {e}")
+            try:
+                headers = {
+                    'Authorization': f'Bearer {sp.auth_manager.get_access_token()["access_token"]}'
+                }
+                url = f"https://api.spotify.com/v1/playlists/{playlist['id']}/followers"
+                response = requests.delete(url, headers=headers)
+                if response.status_code == 200:
+                    deleted_count += 1
+                else:
+                    logger.error(f"Direct API deletion failed: {response.status_code}")
+            except Exception as e2:
+                logger.error(f"❌ All deletion methods failed: {e2}")
+    return deleted_count
+
+def generate_chart_data(stats, label_type):
+    if not stats:
+        return {'labels': [], 'data': [], 'colors': []}
+    labels = list(stats.keys())
+    data = list(stats.values())
+    colors = []
+    for i in range(len(labels)):
+        hue = (i * 137.5) % 360
+        colors.append(f'hsl({hue}, 70%, 60%)')
+    return {
+        'labels': labels,
+        'data': data,
+        'colors': colors,
+        'label_type': label_type
+    }
+
+def get_active_device(sp):
+    try:
+        devices = sp.devices()
+        if devices['devices']:
+            for device in devices['devices']:
+                if device.get('is_active'):
+                    return device['id']
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting active device: {e}")
+    return None
+
+def get_lastfm_similar_tracks(artist_name, track_name, api_key, limit=50):
+    if not api_key:
+        return []
+    lastfm_url = "http://ws.audioscrobbler.com/2.0/"
+    params = {
+        "method": "track.getsimilar",
+        "artist": artist_name,
+        "track": track_name,
+        "api_key": api_key,
+        "format": "json",
+        "limit": limit
+    }
+    try:
+        response = requests.get(lastfm_url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            similar_tracks = data.get("similartracks", {}).get("track", [])
+            return similar_tracks
+        else:
+            logger = logging.getLogger('Launcher')
+            logger.error(f"Last.fm API error: {response.status_code}")
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Last.fm request error: {e}")
+    return []
+
+def parse_track_input(input_string):
+    separators = [' --- ']
+    for sep in separators:
+        if sep in input_string:
+            parts = input_string.split(sep, 1)
+            return parts[0].strip(), parts[1].strip()
+    for sep in [' - ', ' by ']:
+        if sep in input_string:
+            idx = input_string.rfind(sep)
+            if idx != -1:
+                track_name = input_string[:idx].strip()
+                artist_name = input_string[idx + len(sep):].strip()
+                return track_name, artist_name
+    return input_string.strip(), None
+
+def play_playlist(playlist_uri, sp, device_id=None):
+    try:
+        if not device_id:
+            device_id = get_active_device(sp)
+        if not device_id:
+            logger = logging.getLogger('Launcher')
+            logger.warning("No active Spotify device found")
+            return False
+        sp.start_playback(device_id=device_id, context_uri=playlist_uri)
+        return True
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error playing playlist: {e}")
+        return False
+
+def rate_limit(min_interval=1):
+    def decorator(f):
+        last_called = [0.0]
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            elapsed = time.time() - last_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            last_called[0] = time.time()
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
 def search_lyrics_for_track(track_name, artist_name):
     try:
         api_url = "https://lrclib.net/api/search"
@@ -136,35 +270,36 @@ def search_lyrics_for_track(track_name, artist_name):
         logger.error(f"Lyrics search unexpected error: {e}")
         return {'success': False, 'error': f'Unexpected error: {str(e)}'}
 
-def generate_chart_data(stats, label_type):
-    if not stats:
-        return {'labels': [], 'data': [], 'colors': []}
-    labels = list(stats.keys())
-    data = list(stats.values())
-    colors = []
-    for i in range(len(labels)):
-        hue = (i * 137.5) % 360
-        colors.append(f'hsl({hue}, 70%, 60%)')
-    return {
-        'labels': labels,
-        'data': data,
-        'colors': colors,
-        'label_type': label_type
-    }
+def search_spotify_track(track_name, artist_name, sp):
+    try:
+        result = sp.search(q=f"track:{track_name} artist:{artist_name}", type='track', limit=1)
+        items = result['tracks']['items']
+        if items:
+            return items[0]['id']
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error searching Spotify track: {e}")
+    return None
 
-def rate_limit(min_interval=1):
-    def decorator(f):
-        last_called = [0.0]
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            elapsed = time.time() - last_called[0]
-            left_to_wait = min_interval - elapsed
-            if left_to_wait > 0:
-                time.sleep(left_to_wait)
-            last_called[0] = time.time()
-            return f(*args, **kwargs)
-        return wrapped
-    return decorator
+def search_spotify_track_ids(track_list, sp):
+    spotify_track_ids = []
+    logger = logging.getLogger('Launcher')
+    for track in track_list:
+        name = track.get('name', '')
+        artist = track.get('artist', {}).get('name', '')
+        if not name or not artist:
+            continue
+        try:
+            result = sp.search(q=f"track:{name} artist:{artist}", type='track', limit=1)
+            items = result['tracks']['items']
+            if items:
+                track_id = items[0]['id']
+                spotify_track_ids.append(track_id)
+            else:
+                logger.info(f"  Not found on Spotify: {name} by {artist}")
+        except Exception as e:
+            logger.error(f"  Error searching for {name} by {artist}: {e}")
+    return spotify_track_ids
 
 # ============== CONFIGURATION ROUTES ==============
 
@@ -308,6 +443,7 @@ def save_advanced_config():
         config["api_keys"]["client_id"] = request.form.get('client_id', '').strip()
         config["api_keys"]["client_secret"] = request.form.get('client_secret', '').strip()
         config["api_keys"]["redirect_uri"] = request.form.get('redirect_uri', 'http://127.0.0.1:5000').strip()
+        config["api_keys"]["lastfm"] = request.form.get('lastfm', '').strip()
         config["settings"]["fallback_city"] = normalized_fallback
         config["display"]["type"] = new_display_type
         config["display"]["framebuffer"] = request.form.get('framebuffer_device', '/dev/fb1')
@@ -449,7 +585,7 @@ def spotify_auth_page():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
             cache_path=".spotify_cache",
             show_dialog=True
         )
@@ -482,7 +618,7 @@ def process_callback_url():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
             cache_path=".spotify_cache"
         )
         token_info = sp_oauth.get_access_token(code)
@@ -497,6 +633,139 @@ def process_callback_url():
     return redirect(url_for('index'))
 
 # ============== SPOTIFY CONTROL ROUTES ==============
+
+@app.route('/spotify_create_similar_playlist', methods=['POST'])
+@rate_limit(2.0)
+def spotify_create_similar_playlist():
+    logger = logging.getLogger('Launcher')
+    try:
+        track_name = request.json.get('track_name', '').strip()
+        artist_name = request.json.get('artist_name', '').strip()
+        if not track_name or not artist_name:
+            current_track = get_current_track()
+            if not current_track.get('has_track'):
+                return jsonify({'success': False, 'error': 'No track currently playing and no track specified'})
+            track_name = current_track['song']
+            artist_name = current_track['artist']
+            if '(' in artist_name:
+                artist_name = artist_name.split('(')[0].strip()
+        logger.info(f"Creating similar playlist for: {track_name} by {artist_name}")
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        config = load_config()
+        lastfm_key = config["api_keys"].get("lastfm", "")
+        if not lastfm_key:
+            return jsonify({'success': False, 'error': 'Last.fm API key not configured'})
+        original_track_id = search_spotify_track(track_name, artist_name, sp)
+        if not original_track_id:
+            return jsonify({'success': False, 'error': f'Track "{track_name}" by {artist_name} not found on Spotify'})
+        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=30)
+        if not similar_tracks:
+            logger.warning(f"No similar tracks found on Last.fm for: {track_name} by {artist_name}")
+            return jsonify({'success': False, 'error': 'No similar tracks found on Last.fm'})
+        recommended_track_ids = search_spotify_track_ids(similar_tracks, sp)
+        if not recommended_track_ids:
+            logger.warning(f"No similar tracks found on Spotify")
+            return jsonify({'success': False, 'error': 'No similar tracks found on Spotify'})
+        all_track_ids = [original_track_id] + recommended_track_ids
+        playlist_name = f"NeonDisplay Recommends"
+        deleted_count = delete_existing_playlist(playlist_name, sp)
+        user_id = sp.current_user()["id"]
+        description = f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay"
+        playlist = sp.user_playlist_create(
+            user=user_id,
+            name=playlist_name,
+            public=False,
+            description=description
+        )
+        if all_track_ids:
+            for i in range(0, len(all_track_ids), 100):
+                batch = all_track_ids[i:i+100]
+                sp.user_playlist_add_tracks(user_id, playlist["id"], batch)
+            time.sleep(1)
+            play_success = play_playlist(playlist['uri'], sp)
+            return jsonify({
+                'success': True,
+                'message': f'Created playlist "{playlist_name}" with {len(all_track_ids)} tracks',
+                'playlist_name': playlist_name,
+                'playlist_url': playlist['external_urls']['spotify'],
+                'track_count': len(all_track_ids),
+                'auto_played': play_success
+            })
+        else:
+            return jsonify({'success': False, 'error': 'No tracks to add to playlist'})
+    except Exception as e:
+        logger.error(f"Error creating similar playlist: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Error creating playlist: {str(e)}'})
+
+@app.route('/spotify_generate_from_input', methods=['POST'])
+@rate_limit(2.0)
+def spotify_generate_from_input():
+    logger = logging.getLogger('Launcher')
+    try:
+        input_string = request.json.get('input_string', '').strip()
+        if not input_string:
+            return jsonify({'success': False, 'error': 'No input string provided'})
+        track_name, artist_name = parse_track_input(input_string)
+        if artist_name is None:
+            sp, message = get_spotify_client()
+            if not sp:
+                return jsonify({'success': False, 'error': message})
+            result = sp.search(q=f"track:{track_name}", type='track', limit=1)
+            items = result['tracks']['items']
+            if not items:
+                return jsonify({'success': False, 'error': f'Track "{track_name}" not found on Spotify'})
+            track_name = items[0]['name']
+            artist_name = items[0]['artists'][0]['name']
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        config = load_config()
+        lastfm_key = config["api_keys"].get("lastfm", "")
+        if not lastfm_key:
+            return jsonify({'success': False, 'error': 'Last.fm API key not configured'})
+        original_track_id = search_spotify_track(track_name, artist_name, sp)
+        if not original_track_id:
+            return jsonify({'success': False, 'error': f'Track "{track_name}" by {artist_name} not found on Spotify'})
+        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=30)
+        if not similar_tracks:
+            logger.warning(f"No similar tracks found on Last.fm for: {track_name} by {artist_name}")
+            return jsonify({'success': False, 'error': 'No similar tracks found on Last.fm'})
+        recommended_track_ids = search_spotify_track_ids(similar_tracks, sp)
+        if not recommended_track_ids:
+            logger.warning(f"No similar tracks found on Spotify")
+            return jsonify({'success': False, 'error': 'No similar tracks found on Spotify'})
+        all_track_ids = [original_track_id] + recommended_track_ids
+        playlist_name = f"NeonDisplay Recommends"
+        deleted_count = delete_existing_playlist(playlist_name, sp)
+        user_id = sp.current_user()["id"]
+        description = f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay"
+        playlist = sp.user_playlist_create(
+            user=user_id,
+            name=playlist_name,
+            public=False,
+            description=description
+        )
+        if all_track_ids:
+            for i in range(0, len(all_track_ids), 100):
+                batch = all_track_ids[i:i+100]
+                sp.user_playlist_add_tracks(user_id, playlist["id"], batch)
+            time.sleep(1)
+            play_success = play_playlist(playlist['uri'], sp)
+            return jsonify({
+                'success': True,
+                'message': f'Created playlist "{playlist_name}" with {len(all_track_ids)} tracks',
+                'playlist_name': playlist_name,
+                'playlist_url': playlist['external_urls']['spotify'],
+                'track_count': len(all_track_ids),
+                'auto_played': play_success
+            })
+        else:
+            return jsonify({'success': False, 'error': 'No tracks to add to playlist'})
+    except Exception as e:
+        logger.error(f"Error generating playlist from input: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'})
 
 @app.route('/spotify_next', methods=['POST'])
 @rate_limit(0.5)
@@ -544,7 +813,7 @@ def spotify_play():
         logger.error(f"Play error: {str(e)}")
         return {'success': False, 'error': str(e)}
 
-@app.route('/spotify_play_playlist', methods=['POST'])
+@app.route('/spotify_play_context', methods=['POST'])
 @rate_limit(0.5)
 def spotify_play_context():
     logger = logging.getLogger('Launcher')
@@ -1091,11 +1360,9 @@ def view_logs():
     config = load_config()
     ui_config = config.get("ui", {"theme": "dark"})
     current_theme = ui_config.get("theme", "dark")
-
     backup_folder = "backuplogs"
     log_file = os.path.join(backup_folder, 'neondisplay.log')
     backup_count = count_backup_logs()
-    
     if not os.path.exists(log_file):
         log_content = "Log file does not exist. It will be created when there are log messages.\n\n"
         log_content += f"Log file path: {os.path.abspath(log_file)}"
@@ -1237,17 +1504,6 @@ def search_results():
                         playlists=playlists,
                         ui_config=ui_config)
 
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    """Endpoint to gracefully shutdown the server"""
-    logger = logging.getLogger('Launcher')
-    logger.info("Shutting down server via API request")
-    shutdown_func = request.environ.get('werkzeug.server.shutdown')
-    if shutdown_func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    shutdown_func()
-    return 'Server shutting down...'
-
 @app.route('/status/hud')
 def status_hud():
     return {'running': is_hud_running()}
@@ -1309,7 +1565,8 @@ def is_config_ready():
     return all([
         config["api_keys"]["openweather"],
         config["api_keys"]["client_id"], 
-        config["api_keys"]["client_secret"]
+        config["api_keys"]["client_secret"],
+        config["api_keys"]["lastfm"]
     ])
 
 def load_config():
@@ -1367,16 +1624,13 @@ def validate_fallback_city_input(city_value, openweather_key):
         return False, "Fallback city must include at least City and Country (e.g., London,UK)", None
     if len(parts) > 3:
         return False, "Too many commas. Use City,Country or City,State,Country", None
-
     city = parts[0]
     state = None
-
     if len(parts) == 2:
         country = parts[1]
     else:
         state = parts[1]
         country = parts[2]
-
     if len(country) != 2 or not country.isalpha():
         return False, "Country must be a two-letter ISO code (e.g., US, UK, DE)", None
     country = country.upper()
@@ -1384,13 +1638,11 @@ def validate_fallback_city_input(city_value, openweather_key):
         if len(state) != 2 or not state.isalpha():
             return False, "State must be a two-letter code (e.g., IA, CA)", None
         state = state.upper()
-
     normalized_parts = [city]
     if state:
         normalized_parts.append(state)
     normalized_parts.append(country)
     normalized_value = ", ".join(normalized_parts)
-
     if not openweather_key:
         return False, "OpenWeather API key required to validate fallback city", None
     try:
@@ -1471,7 +1723,7 @@ def check_spotify_auth():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
             cache_path=".spotify_cache"
         )
         token_info = sp_oauth.get_cached_token()
@@ -1505,7 +1757,7 @@ def get_spotify_client():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
             cache_path=".spotify_cache"
         )
         token_info = sp_oauth.get_cached_token()

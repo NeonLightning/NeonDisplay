@@ -484,6 +484,12 @@
                                     </div>
                                 </div>
                             </div>
+                            <div style="display: flex; justify-content: flex-start; margin-top: 10px;">
+                                <button type="button" class="btn-secondary" onclick="generateSimilarPlaylistFromCurrentTrack()" 
+                                        style="width: auto; padding: 8px 16px; font-size: 14px;">
+                                    🎵 Generate Similar Playlist
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -598,7 +604,7 @@
         });
     }
     function getRateLimitForAction(action) {
-        const limits = {'play': 2500,'pause': 1500,'next': 800,'previous': 800,'volume': 300,'seek': 800};
+        const limits = {'play': 2500,'pause': 1500,'next': 800,'previous': 800,'volume': 300,'seek': 800, 'generate_playlist': 5000};
         return limits[action] || 1000;
     }
     function canMakeRequest(action) {
@@ -1326,6 +1332,109 @@
             playBtn.style.display = 'block';
             pauseBtn.style.display = 'none';
         }
+    }
+    function generateSimilarPlaylistFromCurrentTrack() {
+        const statusDiv = document.getElementById('spotifyControlStatus');
+        const trackTitle = document.getElementById('trackTitle')?.dataset?.currentText;
+        const trackArtist = document.getElementById('trackArtist')?.dataset?.currentText;
+        if (!trackTitle || !trackArtist || trackTitle === 'No track currently playing') {
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'No track currently displayed.';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+            return;
+        }
+        if (!canMakeRequest('generate_playlist')) {
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status warning';
+                statusDiv.textContent = 'Please wait before making another request.';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 2000);
+            }
+            return;
+        }
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status info';
+            statusDiv.textContent = 'Generating similar playlist...';
+        }
+        const inputString = `${trackTitle} --- ${trackArtist}`;
+        fetch('/spotify_generate_from_input', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ input_string: inputString })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (statusDiv) {
+                if (data.success) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = data.message || 'Playlist generated successfully!';
+                    if (data.playlist_url) {
+                        const playlistLink = document.createElement('a');
+                        playlistLink.href = data.playlist_url;
+                        playlistLink.target = '_blank';
+                        playlistLink.textContent = 'Open playlist on Spotify';
+                        playlistLink.style.color = 'var(--color-primary)';
+                        playlistLink.style.marginLeft = '10px';
+                        playlistLink.style.textDecoration = 'underline';
+                        statusDiv.appendChild(document.createElement('br'));
+                        statusDiv.appendChild(playlistLink);
+                    }
+                    setTimeout(() => {
+                        if (statusDiv) {
+                            statusDiv.style.display = 'none';
+                        }
+                    }, 8000);
+                } else {
+                    statusDiv.className = 'status error';
+                    let errorMsg = data.error || 'Unknown error';
+                    if (errorMsg.includes('Last.fm') || errorMsg.includes('API key')) {
+                        errorMsg = 'Last.fm API key not configured. Please add it in Advanced Configuration.';
+                    } else if (errorMsg.includes('not found')) {
+                        errorMsg = 'Track not found on Spotify.';
+                    }
+                    statusDiv.textContent = 'Error: ' + errorMsg;
+                    setTimeout(() => {
+                        if (statusDiv) {
+                            statusDiv.style.display = 'none';
+                        }
+                    }, 5000);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Generate playlist error:', error);
+            if (statusDiv) {
+                statusDiv.className = 'status error';
+                let errorMsg = error.message;
+                if (errorMsg.includes('Failed to fetch') || errorMsg.includes('Network')) {
+                    errorMsg = 'Network error. Please check your internet connection.';
+                }
+                statusDiv.textContent = 'Error: ' + errorMsg;
+                setTimeout(() => {
+                    if (statusDiv) {
+                        statusDiv.style.display = 'none';
+                    }
+                }, 5000);
+            }
+        })
+        .finally(() => {
+            completeRequest();
+        });
     }
     async function updateAppStatus() {
         try {

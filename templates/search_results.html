@@ -353,6 +353,24 @@
                 max-height: 70vh;
             }
         }
+        .similar-button {
+            padding: 8px 12px;
+            background: var(--color-success);
+            color: var(--color-success-text);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .similar-button:hover {
+            background: var(--color-success);
+            filter: brightness(1.2);
+        }
+        .similar-button:disabled {
+            background: var(--color-border-default);
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body data-theme="{{ ui_config.theme }}">
@@ -415,6 +433,7 @@
                             <div class="track-actions">
                                 <button class="queue-button" onclick="addToQueue('{{ track.uri }}', '{{ track.name|e }}')">+ Add to Queue</button>
                                 <button class="play-button" onclick="playTrack('{{ track.uri }}', '{{ track.name|e }}')">▶ Play Now</button>
+                                <button class="similar-button" onclick="generateSimilarTracks('{{ track.name|e }}', '{{ track.artists|e }}')">🎵 Similar</button>
                             </div>
                         </div>
                         {% endfor %}
@@ -457,9 +476,100 @@
             const limits = {
                 'play': 2000,
                 'queue': 1500,
-                'search': 1000
+                'search': 1000,
+                'generate_playlist': 5000
             };
             return limits[action] || 1000;
+        }
+        function generateSimilarTracks(trackName, trackArtists) {
+            if (!canMakeRequest('generate_playlist')) {
+                showStatus('Please wait before generating another playlist', 'error');
+                return;
+            }
+            const cleanTrackName = trackName
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&#x27;/g, "'");
+            const cleanTrackArtists = trackArtists
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&#x27;/g, "'");
+            showStatus(`Finding similar tracks for "${cleanTrackName}"...`, 'info');
+            const inputString = `${cleanTrackName} --- ${cleanTrackArtists}`;
+            
+            fetch('/spotify_generate_from_input', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    input_string: inputString 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(data.message, 'success');
+                    if (data.playlist_url) {
+                        const statusDiv = document.getElementById('searchStatus');
+                        const playlistLink = document.createElement('a');
+                        playlistLink.href = data.playlist_url;
+                        playlistLink.target = '_blank';
+                        playlistLink.textContent = 'Open playlist on Spotify';
+                        playlistLink.style.color = 'var(--color-primary)';
+                        playlistLink.style.marginLeft = '10px';
+                        playlistLink.style.textDecoration = 'underline';
+                        playlistLink.style.fontWeight = 'bold';
+                        statusDiv.appendChild(document.createElement('br'));
+                        statusDiv.appendChild(playlistLink);
+                        clearTimeout(statusDiv.timer);
+                        statusDiv.timer = setTimeout(() => {
+                            statusDiv.style.display = 'none';
+                        }, 10000);
+                    }
+                } else {
+                    showStatus('Failed: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Error: ' + error.message, 'error');
+            })
+            .finally(() => {
+                completeRequest();
+            });
+        }
+        function playPlaylistFromUri(playlistUri, playlistName) {
+            if (!canMakeRequest('play')) {
+                showStatus('Please wait before playing', 'error');
+                return;
+            }
+            showStatus(`Playing playlist "${playlistName}"...`, 'info');
+            fetch('/spotify_play_context', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uri: playlistUri, name: playlistName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus(`Now playing: ${playlistName}`, 'success');
+                    setTimeout(loadQueue, 1000);
+                } else {
+                    showStatus('Failed to play playlist: ' + data.error, 'error');
+                }
+            })
+            .catch(error => {
+                showStatus('Error playing playlist: ' + error, 'error');
+            })
+            .finally(() => {
+                completeRequest();
+            });
         }
         function canMakeRequest(action) {
             if (isRequestInProgress) return false;
