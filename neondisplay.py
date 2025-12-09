@@ -1240,13 +1240,25 @@ def spotify_get_volume():
 @app.route('/spotify_search', methods=['POST'])
 @rate_limit(1.0)
 def spotify_search():
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
     try:
-        query = request.json.get('query', '').strip()
+        query = request.form.get('query', '').strip()
         if not query:
-            return {'success': False, 'error': 'No search query provided'}
+            flash('Please enter a search term', 'error')
+            return render_template('search_results.html', 
+                                query='', 
+                                tracks=[],
+                                playlists=[],
+                                ui_config=ui_config)
         sp, message = get_spotify_client()
         if not sp:
-            return {'success': False, 'error': message}
+            flash(f'Spotify error: {message}', 'error')
+            return render_template('search_results.html', 
+                                query=query, 
+                                tracks=[],
+                                playlists=[],
+                                ui_config=ui_config)
         results = sp.search(q=query, type='track', limit=20)
         tracks = []
         for item in results['tracks']['items']:
@@ -1266,23 +1278,44 @@ def spotify_search():
                 'uri': item['uri'],
                 'image_url': image_url
             })
-        return {'success': True, 'tracks': tracks}
+        return render_template('search_results.html', 
+                            query=query, 
+                            tracks=tracks,
+                            playlists=[],
+                            ui_config=ui_config)
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Spotify search error: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        flash(f'Search error: {str(e)}', 'error')
+        return render_template('search_results.html', 
+                            query=request.form.get('query', ''), 
+                            tracks=[],
+                            playlists=[],
+                            ui_config=ui_config)
 
 @app.route('/spotify_search_playlist', methods=['POST'])
 @rate_limit(1.0)
 def spotify_search_playlist():
+    config = load_config()
+    ui_config = config.get("ui", {"theme": "dark"})
     logger = logging.getLogger('Launcher')
     try:
-        query = request.json.get('query', '').strip()
+        query = request.form.get('query', '').strip()
         if not query:
-            return jsonify({'success': False, 'error': 'No search query provided'})
+            flash('Please enter a playlist name', 'error')
+            return render_template('search_results.html', 
+                                query='', 
+                                tracks=[],
+                                playlists=[],
+                                ui_config=ui_config)
         sp, message = get_spotify_client()
         if not sp:
-            return jsonify({'success': False, 'error': message})
+            flash(f'Spotify error: {message}', 'error')
+            return render_template('search_results.html', 
+                                query=query, 
+                                tracks=[],
+                                playlists=[],
+                                ui_config=ui_config)
         results = sp.search(q=query, type='playlist', limit=20)
         playlists = []
         if results and 'playlists' in results and results['playlists']['items']:
@@ -1298,10 +1331,19 @@ def spotify_search_playlist():
                     'uri': item['uri'],
                     'image_url': image_url
                 })
-        return jsonify({'success': True, 'playlists': playlists})
+        return render_template('search_results.html', 
+                            query=query, 
+                            tracks=[],
+                            playlists=playlists,
+                            ui_config=ui_config)
     except Exception as e:
         logger.error(f"Spotify playlist search error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        flash(f'Playlist search error: {str(e)}', 'error')
+        return render_template('search_results.html', 
+                            query=request.form.get('query', ''), 
+                            tracks=[],
+                            playlists=[],
+                            ui_config=ui_config)
 
 # ============== WEATHER AND DATA ROUTES ==============
 

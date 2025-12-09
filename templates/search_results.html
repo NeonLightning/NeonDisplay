@@ -384,16 +384,28 @@
                 </button>
             </div>
         </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="status {{ category }}" style="display: block;">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
         <div class="search-container">
-            <div class="search-row">
-                <input type="text" id="searchInput" placeholder="Search for songs..." value="">
-                <button onclick="performSearch()" id="searchBtn">⌕ Search Songs</button>
-            </div>
-            
-            <div class="search-row">
-                <input type="text" id="playlistInput" placeholder="Search for playlists..." value="">
-                <button onclick="performPlaylistSearch()" id="playlistBtn">⌕ Search Playlists</button>
-            </div>
+            <form method="POST" action="/spotify_search" id="searchForm">
+                <div class="search-row">
+                    <input type="text" id="searchInput" name="query" placeholder="Search for songs...">
+                    <button type="submit" id="searchBtn">⌕ Search Songs</button>
+                </div>
+            </form>
+            <form method="POST" action="/spotify_search_playlist" id="playlistForm">
+                <div class="search-row">
+                    <input type="text" id="playlistInput" name="query" placeholder="Search for playlists...">
+                    <button type="submit" id="playlistBtn">⌕ Search Playlists</button>
+                </div>
+            </form>
         </div>
         <div id="searchStatus" class="status" style="display: none;"></div>
             <div class="content-container">
@@ -469,6 +481,16 @@
                 loadShuffleState();
             }, 1500);
             setInterval(loadQueue, 3000);
+            document.getElementById('searchForm').addEventListener('submit', function(e) {
+                const searchBtn = document.getElementById('searchBtn');
+                searchBtn.disabled = true;
+                searchBtn.textContent = 'Searching...';
+            });
+            document.getElementById('playlistForm').addEventListener('submit', function(e) {
+                const playlistBtn = document.getElementById('playlistBtn');
+                playlistBtn.disabled = true;
+                playlistBtn.textContent = 'Searching...';
+            });
         });
         let lastRequestTime = 0;
         let isRequestInProgress = false;
@@ -502,7 +524,6 @@
                 .replace(/&#x27;/g, "'");
             showStatus(`Finding similar tracks for "${cleanTrackName}"...`, 'info');
             const inputString = `${cleanTrackName} --- ${cleanTrackArtists}`;
-            
             fetch('/spotify_generate_from_input', {
                 method: 'POST',
                 headers: {
@@ -592,44 +613,6 @@
             statusDiv.timer = setTimeout(() => {
                 statusDiv.style.display = 'none';
             }, 4000); 
-        }
-        function performSearch() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (!query) {
-                showStatus('Please enter a search term', 'error');
-                return;
-            }
-            if (!canMakeRequest('search')) {
-                showStatus('Please wait before searching again', 'error');
-                return;
-            }
-            const searchBtn = document.getElementById('searchBtn');
-            searchBtn.disabled = true;
-            searchBtn.textContent = 'Searching...';
-            showStatus('Searching...', 'info');
-            fetch('/spotify_search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ query: query })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = `/search_results?query=${encodeURIComponent(query)}&tracks=${encodeURIComponent(JSON.stringify(data.tracks))}`;
-                } else {
-                    showStatus('Search failed: ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                showStatus('Search error: ' + error, 'error');
-            })
-            .finally(() => {
-                completeRequest();
-                searchBtn.disabled = false;
-                searchBtn.textContent = '⌕ Search Songs';
-            });
         }
         function playTrack(trackUri, trackName) {
             if (!canMakeRequest('play')) {
@@ -784,44 +767,6 @@
                 completeRequest();
             });
         }
-        function performPlaylistSearch() {
-            const query = document.getElementById('playlistInput').value.trim();
-            if (!query) {
-                showStatus('Please enter a playlist name', 'error');
-                return;
-            }
-            if (!canMakeRequest('search')) {
-                showStatus('Please wait before searching again', 'error');
-                return;
-            }
-            const playlistBtn = document.getElementById('playlistBtn');
-            playlistBtn.disabled = true;
-            playlistBtn.textContent = 'Searching...';
-            showStatus('Searching playlists...', 'info');
-            fetch('/spotify_search_playlist', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ query: query })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = `/search_results?query=${encodeURIComponent(query)}&playlists=${encodeURIComponent(JSON.stringify(data.playlists))}`;
-                } else {
-                    showStatus('Search failed: ' + data.error, 'error');
-                }
-            })
-            .catch(error => {
-                showStatus('Search error: ' + error, 'error');
-            })
-            .finally(() => {
-                completeRequest();
-                playlistBtn.disabled = false;
-                playlistBtn.textContent = '⌕ Search Playlists';
-            });
-        }
         function playPlaylist(uri, name) {
             if (!canMakeRequest('play')) {
                 showStatus('Please wait before playing', 'error');
@@ -918,7 +863,6 @@
             document.body.setAttribute('data-theme', newTheme);
             const btn = document.getElementById('themeBtn');
             btn.innerHTML = newTheme === 'dark' ? '☀' : '☾';
-            
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/toggle_theme';
