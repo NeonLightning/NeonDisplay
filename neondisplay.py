@@ -5,7 +5,7 @@ from datetime import datetime
 from collections import Counter
 from functools import wraps
 from logging.handlers import RotatingFileHandler
-import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil, re
+import os, toml, time, requests, subprocess, sys, signal, urllib.parse, socket, logging, threading, json, hashlib, spotipy, io, sqlite3, shutil, re, random
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -147,6 +147,20 @@ def generate_chart_data(stats, label_type):
         'colors': colors,
         'label_type': label_type
     }
+
+def get_active_device(sp):
+    try:
+        devices = sp.devices()
+        if devices and 'devices' in devices:
+            for device in devices['devices']:
+                if device.get('is_active', False):
+                    return device['id']
+            if devices['devices']:
+                return devices['devices'][0]['id']
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error getting active device: {e}")
+    return None
 
 def get_lastfm_similar_tracks(artist_name, track_name, api_key, limit=50):
     if not api_key:
@@ -648,19 +662,63 @@ def spotify_create_similar_playlist():
         original_track_id = search_spotify_track(track_name, artist_name, sp)
         if not original_track_id:
             return jsonify({'success': False, 'error': f'Track "{track_name}" by {artist_name} not found on Spotify'})
-        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=30)
+        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=75)
         if not similar_tracks:
             logger.warning(f"No similar tracks found on Last.fm for: {track_name} by {artist_name}")
             return jsonify({'success': False, 'error': 'No similar tracks found on Last.fm'})
-        recommended_track_ids = search_spotify_track_ids(similar_tracks, sp)
-        if not recommended_track_ids:
-            logger.warning(f"No similar tracks found on Spotify")
-            return jsonify({'success': False, 'error': 'No similar tracks found on Spotify'})
-        all_track_ids = [original_track_id] + recommended_track_ids
+        not_found_count = 0
+        spotify_track_ids = []
+        logger.info("Searching for similar tracks on Spotify...")
+        for track in similar_tracks:
+            name = track.get('name', '')
+            artist = track.get('artist', {}).get('name', '')
+            if not name or not artist:
+                continue
+            try:
+                result = sp.search(q=f"track:{name} artist:{artist}", type='track', limit=1)
+                items = result['tracks']['items']
+                if items:
+                    track_id = items[0]['id']
+                    spotify_track_ids.append(track_id)
+                else:
+                    logger.info(f"  Not found on Spotify: {name} by {artist}")
+                    not_found_count += 1
+            except Exception as e:
+                logger.error(f"  Error searching for {name} by {artist}: {e}")
+                not_found_count += 1
+        extra_songs_needed = not_found_count
+        extra_track_ids = []
+        if extra_songs_needed > 0 and spotify_track_ids:
+            logger.info(f"Adding {extra_songs_needed} extra song(s) to compensate for {not_found_count} not found")
+            extra_similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=75 + extra_songs_needed * 2)
+            if extra_similar_tracks:
+                already_tried = {(track.get('name', '').lower(), track.get('artist', {}).get('name', '').lower()) for track in similar_tracks}
+                for extra_track in extra_similar_tracks:
+                    if len(extra_track_ids) >= extra_songs_needed:
+                        break
+                    name = extra_track.get('name', '')
+                    artist = extra_track.get('artist', {}).get('name', '')
+                    if not name or not artist:
+                        continue
+                    if (name.lower(), artist.lower()) in already_tried:
+                        continue
+                    try:
+                        result = sp.search(q=f"track:{name} artist:{artist}", type='track', limit=1)
+                        items = result['tracks']['items']
+                        if items:
+                            track_id = items[0]['id']
+                            if track_id not in spotify_track_ids and track_id not in extra_track_ids:
+                                extra_track_ids.append(track_id)
+                                logger.info(f"  Found extra track: {name} by {artist}")
+                    except Exception as e:
+                        logger.error(f"  Error searching for extra track {name} by {artist}: {e}")
+        all_track_ids = [original_track_id] + spotify_track_ids + extra_track_ids
+        random.shuffle(spotify_track_ids)
+        all_track_ids = [original_track_id] + spotify_track_ids + extra_track_ids
         playlist_name = f"NeonDisplay Recommends"
         deleted_count = delete_existing_playlist(playlist_name, sp)
         user_id = sp.current_user()["id"]
-        description = f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay"
+        description = (f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay ")
         playlist = sp.user_playlist_create(
             user=user_id,
             name=playlist_name,
@@ -679,7 +737,11 @@ def spotify_create_similar_playlist():
                 'playlist_name': playlist_name,
                 'playlist_url': playlist['external_urls']['spotify'],
                 'track_count': len(all_track_ids),
-                'auto_played': play_success
+                'found_count': len(spotify_track_ids),
+                'not_found_count': not_found_count,
+                'extra_added_count': len(extra_track_ids),
+                'auto_played': play_success,
+                'random_order': True
             })
         else:
             return jsonify({'success': False, 'error': 'No tracks to add to playlist'})
@@ -716,19 +778,63 @@ def spotify_generate_from_input():
         original_track_id = search_spotify_track(track_name, artist_name, sp)
         if not original_track_id:
             return jsonify({'success': False, 'error': f'Track "{track_name}" by {artist_name} not found on Spotify'})
-        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=30)
+        similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=75)
         if not similar_tracks:
             logger.warning(f"No similar tracks found on Last.fm for: {track_name} by {artist_name}")
             return jsonify({'success': False, 'error': 'No similar tracks found on Last.fm'})
-        recommended_track_ids = search_spotify_track_ids(similar_tracks, sp)
-        if not recommended_track_ids:
-            logger.warning(f"No similar tracks found on Spotify")
-            return jsonify({'success': False, 'error': 'No similar tracks found on Spotify'})
-        all_track_ids = [original_track_id] + recommended_track_ids
+        not_found_count = 0
+        spotify_track_ids = []
+        logger.info("Searching for similar tracks on Spotify...")
+        for track in similar_tracks:
+            name = track.get('name', '')
+            artist = track.get('artist', {}).get('name', '')
+            if not name or not artist:
+                continue
+            try:
+                result = sp.search(q=f"track:{name} artist:{artist}", type='track', limit=1)
+                items = result['tracks']['items']
+                if items:
+                    track_id = items[0]['id']
+                    spotify_track_ids.append(track_id)
+                else:
+                    logger.info(f"  Not found on Spotify: {name} by {artist}")
+                    not_found_count += 1
+            except Exception as e:
+                logger.error(f"  Error searching for {name} by {artist}: {e}")
+                not_found_count += 1
+        extra_songs_needed = not_found_count
+        extra_track_ids = []
+        if extra_songs_needed > 0 and spotify_track_ids:
+            logger.info(f"Adding {extra_songs_needed} extra song(s) to compensate for {not_found_count} not found")
+            extra_similar_tracks = get_lastfm_similar_tracks(artist_name, track_name, lastfm_key, limit=75 + extra_songs_needed * 2)
+            if extra_similar_tracks:
+                already_tried = {(track.get('name', '').lower(), track.get('artist', {}).get('name', '').lower()) for track in similar_tracks}
+                for extra_track in extra_similar_tracks:
+                    if len(extra_track_ids) >= extra_songs_needed:
+                        break
+                    name = extra_track.get('name', '')
+                    artist = extra_track.get('artist', {}).get('name', '')
+                    if not name or not artist:
+                        continue
+                    if (name.lower(), artist.lower()) in already_tried:
+                        continue
+                    try:
+                        result = sp.search(q=f"track:{name} artist:{artist}", type='track', limit=1)
+                        items = result['tracks']['items']
+                        if items:
+                            track_id = items[0]['id']
+                            if track_id not in spotify_track_ids and track_id not in extra_track_ids:
+                                extra_track_ids.append(track_id)
+                                logger.info(f"  Found extra track: {name} by {artist}")
+                    except Exception as e:
+                        logger.error(f"  Error searching for extra track {name} by {artist}: {e}")
+        all_track_ids = [original_track_id] + spotify_track_ids + extra_track_ids
+        random.shuffle(spotify_track_ids)
+        all_track_ids = [original_track_id] + spotify_track_ids + extra_track_ids
         playlist_name = f"NeonDisplay Recommends"
         deleted_count = delete_existing_playlist(playlist_name, sp)
         user_id = sp.current_user()["id"]
-        description = f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay"
+        description = (f"Tracks similar to {track_name} by {artist_name} - Generated by NeonDisplay ")
         playlist = sp.user_playlist_create(
             user=user_id,
             name=playlist_name,
@@ -747,7 +853,11 @@ def spotify_generate_from_input():
                 'playlist_name': playlist_name,
                 'playlist_url': playlist['external_urls']['spotify'],
                 'track_count': len(all_track_ids),
-                'auto_played': play_success
+                'found_count': len(spotify_track_ids),
+                'not_found_count': not_found_count,
+                'extra_added_count': len(extra_track_ids),
+                'auto_played': play_success,
+                'random_order': True
             })
         else:
             return jsonify({'success': False, 'error': 'No tracks to add to playlist'})
