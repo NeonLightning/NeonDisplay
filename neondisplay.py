@@ -49,7 +49,8 @@ DEFAULT_CONFIG = {
         "use_google_geo": True,
         "time_display": True,
         "progressbar_display": True,
-        "enable_current_track_display": True
+        "enable_current_track_display": True,
+        "sleep_timeout": 300
     },
     "wifi": {
         "ap_ssid": "Neonwifi-Manager",
@@ -526,6 +527,7 @@ def save_advanced_config():
         config["settings"]["time_display"] = 'time_display' in request.form
         config["settings"]["start_screen"] = request.form.get('start_screen', 'weather')
         config["settings"]["use_gpsd"] = 'use_gpsd' in request.form
+        config["settings"]["sleep_timeout"] = int(request.form.get('sleep_timeout', 300))
         use_google_geo = 'use_google_geo' in request.form
         config["settings"]["use_google_geo"] = use_google_geo
         config["settings"]["enable_current_track_display"] = 'enable_current_track_display' in request.form
@@ -1807,7 +1809,7 @@ def _build_api_status(state, message):
     return {
         "state": state,
         "message": message,
-        "checked_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        "checked_at": datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
     }
 
 
