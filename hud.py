@@ -13,7 +13,7 @@ SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
 UPDATE_INTERVAL_WEATHER = 3600
 GEO_UPDATE_INTERVAL = 3600
-SCOPE = "user-read-currently-playing user-modify-playback-state user-read-playback-state"
+SCOPE = "user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private"
 USE_GPSD = True
 USE_GOOGLE_GEO = True
 SCREEN_AREA = SCREEN_WIDTH * SCREEN_HEIGHT
@@ -864,7 +864,7 @@ def draw_waveshare(weather_info, spotify_track):
                 draw_waveshare.artist_scroll_offset = 0
             title_bbox = draw.textbbox((0, 0), title, font=font_medium)
             title_width = title_bbox[2] - title_bbox[0]
-            scroll_speed = 4
+            scroll_speed = 8
             if title_width > display_width - 20:
                 total_scroll_distance = title_width + 15
                 draw_waveshare.title_scroll_offset = (draw_waveshare.title_scroll_offset + scroll_speed) % total_scroll_distance
@@ -903,7 +903,7 @@ def draw_waveshare(weather_info, spotify_track):
                 img.paste(weather_info["cached_icon"], (weather_icon_x, weather_icon_y))
             except Exception as e:
                 print(f"Error pasting cached weather icon: {e}")
-        temp_text = f"{weather_info['temp']}°C"
+        temp_text = f"Temp : {weather_info['temp']}°C"
         draw.text((45, display_height - 55), temp_text, font=font_large, fill=0)
         feels_like_text = f"Feels: {weather_info['feels_like']}°C"
         draw.text((45, display_height - 35), feels_like_text, font=font_small, fill=0)
@@ -1057,6 +1057,8 @@ def should_display_frame(image_hash):
 
 def update_display():
     global START_SCREEN
+    if display_sleeping:
+        return
     display_type = config.get("display", {}).get("type", "framebuffer")
     if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
         img = draw_waveshare(weather_info, spotify_track)
@@ -1064,8 +1066,6 @@ def update_display():
         if START_SCREEN == "weather":
             img = draw_weather_image(weather_info)
         elif START_SCREEN == "spotify":
-            if display_sleeping:
-                return
             img = draw_spotify_image(spotify_track)
         elif START_SCREEN == "time":
             img = draw_clock_image()
@@ -1384,6 +1384,7 @@ def wake_up_display():
     if display_sleeping:
         display_sleeping = False
         update_activity()
+        last_frame_hash = None
         update_display()
 
 # ============== INTERNET FUNCTIONS ==============
@@ -1483,42 +1484,53 @@ def get_location_via_openweathermap_geocoding(api_key, city_name):
 # ============== LOOP FUNCTIONS ==============
 
 def sleep_monitor_loop():
+    global START_SCREEN, display_sleeping
     last_sleep_check = 0
     last_waveshare_update = 0
-    waveshare_update_interval = 15
+    waveshare_update_interval = 30
     first_sleep_update = True
+    last_screen_state = None
     while not exit_event.is_set():
         current_time = time.time()
+        display_type = config.get("display", {}).get("type", "framebuffer")
         if display_sleeping:
             if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
                 if current_time - last_waveshare_update >= waveshare_update_interval:
                     sleep_img = draw_waveshare_sleep_screen()
                     with waveshare_lock:
                         if waveshare_epd is not None:
-                            if first_sleep_update:
-                                first_sleep_update = False
-                            elif waveshare_base_image is not None:
-                                try:
-                                    sleep_img.content_changed = False
-                                    waveshare_epd.displayPartial(waveshare_epd.getbuffer(sleep_img))
-                                except Exception as e:
-                                    print(f"Partial refresh failed, falling back to full refresh: {e}")
-                                    waveshare_epd.init()
-                                    waveshare_epd.Clear(0xFF)
-                                    waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                            try:
+                                sleep_img.content_changed = False
+                                waveshare_epd.displayPartial(waveshare_epd.getbuffer(sleep_img))
+                                waveshare_base_image = sleep_img.copy()
+                            except Exception as e:
+                                print(f"Partial refresh failed for sleep screen: {e}")
+                                waveshare_epd.init()
+                                waveshare_epd.Clear(0xFF)
+                                waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
+                                waveshare_base_image = sleep_img.copy()
                     last_waveshare_update = current_time
-            if current_time - last_sleep_check >= WAKEUP_CHECK_INTERVAL:
-                check_sleep_state()
-                last_sleep_check = current_time
+                    first_sleep_update = False
             time.sleep(1)
-        else:
-            check_sleep_state()
-            last_sleep_check = current_time
-            time.sleep(5)
+            continue
+        check_sleep_state()
+        last_sleep_check = current_time
+        current_screen_state = START_SCREEN
+        if spotify_track:
+            current_track_id = f"{spotify_track.get('title', '')}_{spotify_track.get('artists', '')}"
+            current_screen_state += f"_{current_track_id}"
+        elif weather_info:
+            current_weather_id = f"{weather_info.get('city', '')}_{weather_info.get('temp', '')}"
+            current_screen_state += f"_{current_weather_id}"
+        if current_screen_state != last_screen_state:
+            update_display()
+            last_screen_state = current_screen_state
+            if display_type == "waveshare_epd" and HAS_WAVESHARE_EPD:
+                last_waveshare_update = current_time
+        time.sleep(2)
 
 def spotify_loop():
-    global START_SCREEN, spotify_track, sp, album_art_image, scrolling_text_cache, last_art_url, last_api_call, consecutive_no_track_count
-    global last_queue_data, last_queue_update
+    global START_SCREEN, spotify_track, album_art_image, scrolling_text_cache, last_art_url, last_api_call, consecutive_no_track_count, last_queue_data, last_queue_update
     last_queue_data = []
     last_queue_update = 0
     QUEUE_UPDATE_INTERVAL = 10
@@ -1544,6 +1556,13 @@ def spotify_loop():
             continue
         try:
             last_api_call = current_time
+            from spotify_auth_manager import get_spotify_client
+            sp = get_spotify_client(timeout=5)  # ✅ Add timeout
+            if not sp:
+                api_error_count += 1
+                print(f"Failed to get Spotify client (attempt {api_error_count})")
+                time.sleep(calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track))
+                continue
             track = sp.current_playback()
             api_error_count = 0
             if not track or not track.get('item'):
@@ -1695,7 +1714,7 @@ def go_to_sleep():
             clear_framebuffer()
 
 def go_to_sleep_waveshare():
-    global display_sleeping, last_display_time, waveshare_epd
+    global display_sleeping, last_display_time, waveshare_epd, waveshare_base_image
     if display_sleeping:
         return
     display_sleeping = True
@@ -1718,6 +1737,7 @@ def go_to_sleep_waveshare():
                     waveshare_epd.Clear(0xFF)
                     waveshare_epd.display(waveshare_epd.getbuffer(sleep_img))
                     waveshare_base_image = sleep_img.copy()
+                    print("Sleep screen displayed with fallback")
                 except Exception as e2:
                     print(f"Waveshare sleep fallback also failed: {e2}")
         last_display_time = 0
@@ -1844,10 +1864,6 @@ def prepare_weather_state_data(weather_data):
 def check_sleep_state():
     global display_sleeping, START_SCREEN
     if display_type == "waveshare_epd":
-        if START_SCREEN != "spotify":
-            if display_sleeping:
-                wake_up_display()
-            return
         current_time = time.time()
         music_playing = spotify_track and spotify_track.get('is_playing', False)
         if display_sleeping:
@@ -1903,26 +1919,10 @@ def authenticate_spotify_interactive():
     print("\n" + "="*60)
     print("Spotify Authentication Required")
     print("="*60)
-    sp_oauth = setup_spotify_oauth()
-    auth_url = sp_oauth.get_authorize_url()
-    print(f"Please visit this URL to authenticate:")
-    print(f"{auth_url}")
-    print("\nAfter authorization, you'll be redirected to a URL.")
-    print("Paste that full redirect URL here:")
-    try:
-        redirect_url = input().strip()
-        token_info = sp_oauth.get_access_token(redirect_url)
-        if token_info:
-            sp = spotipy.Spotify(auth_manager=sp_oauth)
-            sp.current_user()
-            print("Authentication successful!")
-            return sp
-        else:
-            print("Failed to get access token")
-            return None
-    except Exception as e:
-        print(f"Authentication error: {e}")
-        return None
+    print("Please authenticate via the web interface at http://your-pi-ip:5000")
+    print("Go to the web UI and complete Spotify authentication there.")
+    print("="*60)
+    return None
 
 def calculate_check_interval(api_error_count, spotify_track, consecutive_no_track_count, max_consecutive_no_track):
     if api_error_count > 0:
@@ -1993,7 +1993,7 @@ def fetch_and_process_album_art(art_url, spotify_track, item, is_continuation):
         setup_scrolling_text_for_track(spotify_track)
         if item.get('artists') and len(item['artists']) > 0:
             primary_artist_id = item['artists'][0]['id']
-            Thread(target=fetch_and_store_artist_image, args=(sp, primary_artist_id), daemon=True).start()
+            Thread(target=fetch_and_store_artist_image, args=(primary_artist_id,), daemon=True).start()
     else:
         if album_art_image:
             main_color, secondary_color = get_contrasting_colors(album_art_image)
@@ -2004,7 +2004,8 @@ def fetch_and_process_album_art(art_url, spotify_track, item, is_continuation):
             spotify_track['secondary_color'] = (0, 255, 255)
         update_spotify_layout(spotify_track)
 
-def fetch_and_store_artist_image(sp, artist_id):
+def fetch_and_store_artist_image(artist_id):
+    from spotify_auth_manager import get_spotify_client
     global artist_image
     if not artist_id:
         with artist_image_lock: 
@@ -2013,6 +2014,11 @@ def fetch_and_store_artist_image(sp, artist_id):
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            sp = get_spotify_client(timeout=5)
+            if not sp:
+                with artist_image_lock:
+                    artist_image = None
+                return            
             artist = sp.artist(artist_id)
             images = artist.get('images', [])
             if not images:
@@ -2077,14 +2083,11 @@ def handle_no_track_playing(current_time, last_successful_write, write_interval)
     return last_successful_write
 
 def handle_spotify_api_errors(e, api_error_count):
-    global spotify_track, last_api_call
+    global last_api_call
     if e.http_status == 429:
         print("Spotify API rate limit hit, backing off for 60 seconds...")
         time.sleep(60)
         last_api_call = time.time() 
-    elif e.http_status == 401:
-        print("Spotify token expired - spotipy should handle refresh automatically")
-        last_api_call = time.time()
     else:
         print(f"Spotify API error (attempt {api_error_count}): {e}")
         last_api_call = time.time()
@@ -2135,29 +2138,30 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
     return last_successful_write, last_track_id, is_first_track_after_startup
 
 def initialize_spotify_client():
-    sp_oauth = setup_spotify_oauth()
     try:
-        token_info = sp_oauth.get_cached_token()
-        if not token_info:
-            return None
-        if sp_oauth.is_token_expired(token_info):
-            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-        sp = spotipy.Spotify(auth_manager=sp_oauth)
-        sp.current_user()
-        return sp
+        from spotify_auth_manager import get_spotify_client
+        sp = get_spotify_client(timeout=5)
+        if sp:
+            sp.current_user()
+            return sp
+        return None
     except Exception as e:
         print(f"Spotify authentication failed: {e}")
         return None
 
 def initialize_spotify_client_or_auth():
-    global sp, spotify_track
-    sp = initialize_spotify_client()
+    global spotify_track
+    from spotify_auth_manager import get_spotify_client
+    sp = get_spotify_client(timeout=5)
     if sp is None:
-        sp = authenticate_spotify_interactive()
-    if sp is None:
+        print("="*60)
+        print("Spotify Authentication Required")
+        print("="*60)
+        print("Please authenticate via the web interface")
+        print("="*60)
         spotify_track = {
             "title": "Spotify Authentication Required",
-            "artists": "Authentication failed - restart to retry",
+            "artists": "Please authenticate via web UI",
             "album": "HUD Setup",
             "current_position": 0,
             "duration": 1,
@@ -2222,17 +2226,6 @@ def setup_scrolling_text_for_track(track_data):
                     scroll_state[key]["active"] = False
                     scroll_state[key]["max_offset"] = 0
                     scroll_state[key]["offset"] = 0
-
-def setup_spotify_oauth():
-    return SpotifyOAuth(
-        client_id=config["api_keys"]["client_id"],
-        client_secret=config["api_keys"]["client_secret"],
-        redirect_uri=config["api_keys"]["redirect_uri"],
-        scope=SCOPE,
-        cache_path=".spotify_cache",
-        open_browser=False,
-        show_dialog=False
-    )
 
 def update_spotify_layout(track_data):
     global spotify_layout_cache
@@ -2587,9 +2580,9 @@ def main():
     display_type = config.get("display", {}).get("type", "framebuffer")
     if display_type == "waveshare_epd":
         screen_update_intervals = {
-            "weather": 30.0,
-            "spotify": 0.1,
-            "time": 1.0 
+            "weather": 0.5,
+            "spotify": 0.5,
+            "time": 0.5
         }
         print("E-paper display detected - using slower refresh rates")
     last_display_update = 0

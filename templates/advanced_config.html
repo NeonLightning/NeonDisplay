@@ -242,6 +242,13 @@
                     {% if spotify_authenticated %}
                     <div class="status success">
                         <p>✓ Spotify is authenticated!</p>
+                        {% if token_health %}
+                            <p id="token-health-display" style="font-size: 0.9em; margin-top: 5px; margin-bottom: 0;">
+                                {% if token_health.time_until_refresh %}
+                                    <br>Refreshes in: <span id="refresh-time">{{ token_health.time_until_refresh }}</span>
+                                {% endif %}
+                            </p>
+                        {% endif %}
                     </div>
                     {% else %}
                     <div class="status warning">
@@ -590,6 +597,31 @@
         </form>
     </div>
     <script>
+        function checkTokenHealth() {
+            fetch('/api/token_health')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.time_until_refresh) {
+                            display += `<br>Refreshes in: ${data.time_until_refresh}`;
+                        }
+                        const statusDiv = document.querySelector('.status.success');
+                        const originalHTML = statusDiv.innerHTML;
+                        statusDiv.innerHTML = successMsg + statusDiv.innerHTML.substring(statusDiv.innerHTML.indexOf('<p id="token-health-display"'));
+                        setTimeout(() => {
+                            statusDiv.innerHTML = originalHTML;
+                        }, 2000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking token health:', error);
+                });
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.querySelector('.status.success')) {
+                setInterval(checkTokenHealth, 30000);
+            }
+        });
         let originalDisplayType = document.getElementById('original_display_type').value;
         function toggleTheme() {
             const currentTheme = document.body.getAttribute('data-theme');

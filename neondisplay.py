@@ -312,7 +312,18 @@ def index():
     ui_config = config.get("ui", {"theme": "dark"}) 
     config_ready = is_config_ready()
     spotify_configured = bool(config["api_keys"]["client_id"] and config["api_keys"]["client_secret"])
-    spotify_authenticated, _ = check_spotify_auth()
+    spotify_authenticated = False
+    if spotify_configured:
+        if os.path.exists('.spotify_cache'):
+            try:
+                with open('.spotify_cache', 'r') as f:
+                    cache = json.load(f)
+                expires_at = cache.get('expires_at', 0)
+                spotify_authenticated = expires_at > (time.time() + 300)
+            except:
+                spotify_authenticated, _ = check_spotify_auth(timeout=2)
+        else:
+            spotify_authenticated = False
     hud_running = is_hud_running()
     neonwifi_running = is_neonwifi_running()
     enable_current_track = config["settings"].get("enable_current_track_display", True)
@@ -336,9 +347,46 @@ def advanced_config():
     available_css = get_available_css_files()
     spotify_configured = bool(config["api_keys"]["client_id"] and config["api_keys"]["client_secret"])
     spotify_authenticated, _ = check_spotify_auth()
+    token_health = None
+    if spotify_authenticated:
+        try:
+            from spotify_auth_manager import SpotifyAuthManager
+            auth_manager = SpotifyAuthManager()
+            status, message = auth_manager.get_token_health()
+            token_health = {
+                'status': status,
+                'message': message,
+                'time_until_refresh': None
+            }
+            if os.path.exists('.spotify_cache'):
+                try:
+                    with open('.spotify_cache', 'r') as f:
+                        cache = json.load(f)
+                    expires_at = cache.get('expires_at', 0)
+                    if expires_at:
+                        time_left = expires_at - time.time()
+                        if time_left > 0:
+                            if time_left < 60:
+                                token_health['time_until_refresh'] = f"{int(time_left)} seconds"
+                            elif time_left < 3600:
+                                minutes = int(time_left / 60)
+                                token_health['time_until_refresh'] = f"{minutes} minutes"
+                            else:
+                                hours = time_left / 3600
+                                token_health['time_until_refresh'] = f"{hours:.1f} hours"
+                except:
+                    pass
+        except Exception as e:
+            print(f"Error getting token health: {e}")
     if 'css_file' not in ui_config or ui_config['css_file'] not in available_css:
         ui_config['css_file'] = DEFAULT_CONFIG["ui"]["css_file"]
-    return render_template('advanced_config.html', config=config, ui_config=ui_config, available_css=available_css,spotify_configured=spotify_configured, spotify_authenticated=spotify_authenticated)
+    return render_template('advanced_config.html', 
+                        config=config, 
+                        ui_config=ui_config, 
+                        available_css=available_css,
+                        spotify_configured=spotify_configured, 
+                        spotify_authenticated=spotify_authenticated,
+                        token_health=token_health)
 
 @app.route('/check_display_change', methods=['POST'])
 def check_display_change():
@@ -576,6 +624,45 @@ def stop_neonwifi_route():
 
 # ============== SPOTIFY AUTHENTICATION ROUTES ==============
 
+@app.route('/api/token_health')
+def token_health():
+    try:
+        from spotify_auth_manager import SpotifyAuthManager
+        auth_manager = SpotifyAuthManager()
+        status, message = auth_manager.get_token_health()
+        time_until_refresh = None
+        if os.path.exists('.spotify_cache'):
+            try:
+                with open('.spotify_cache', 'r') as f:
+                    cache = json.load(f)
+                expires_at = cache.get('expires_at', 0)
+                if expires_at:
+                    time_left = expires_at - time.time()
+                    if time_left > 0:
+                        if time_left < 60:
+                            time_until_refresh = f"{int(time_left)} seconds"
+                        elif time_left < 3600:
+                            minutes = int(time_left / 60)
+                            time_until_refresh = f"{minutes} minutes"
+                        else:
+                            hours = time_left / 3600
+                            time_until_refresh = f"{hours:.1f} hours"
+            except:
+                pass
+        return jsonify({
+            'success': True,
+            'status': status,
+            'message': message,
+            'time_until_refresh': time_until_refresh,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        })
+
 @app.route('/spotify_auth')
 def spotify_auth_page():
     config = load_config()
@@ -587,7 +674,7 @@ def spotify_auth_page():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private",
             cache_path=".spotify_cache",
             show_dialog=True
         )
@@ -620,10 +707,10 @@ def process_callback_url():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private",
             cache_path=".spotify_cache"
         )
-        token_info = sp_oauth.get_access_token(code)
+        token_info = sp_oauth.get_access_token(code, as_dict=False)
         if token_info:
             flash('success', 'Spotify authentication successful!')
         else:
@@ -1841,78 +1928,56 @@ def save_config(config):
 
 # ============== SPOTIFY FUNCTIONS ==============
 
-def check_spotify_auth():
-    config = load_config()
-    if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
-        return False, "Missing client credentials"
+def check_spotify_auth(timeout=5):
     try:
-        if not os.path.exists(".spotify_cache"):
-            return False, "No cached token found"
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
-            cache_path=".spotify_cache"
-        )
-        token_info = sp_oauth.get_cached_token()
-        if not token_info:
-            return False, "No valid token found"
-        if sp_oauth.is_token_expired(token_info):
-            logger = logging.getLogger('Launcher')
-            logger.info("Token expired, attempting refresh...")
-            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-            if not token_info:
-                return False, "Token refresh failed"
-        try:
-            sp = spotipy.Spotify(auth=token_info['access_token'])
-            current_user = sp.current_user()
-            return True, f"Authenticated as {current_user.get('display_name', 'Unknown User')}"
-        except Exception as e:
-            logger = logging.getLogger('Launcher')
-            logger.error(f"Token validation failed: {e}")
-            return False, f"Token validation failed: {str(e)}"
+        from spotify_auth_manager import get_spotify_client
+        result = [False, "Checking..."]
+        def check():
+            try:
+                sp = get_spotify_client(timeout=timeout)
+                if not sp:
+                    result[0] = False
+                    result[1] = "Could not get Spotify client"
+                    return
+                user = sp.current_user()
+                result[0] = True
+                result[1] = f"Authenticated as {user.get('display_name', 'Unknown User')}"
+            except Exception as e:
+                logger = logging.getLogger('Launcher')
+                logger.error(f"Error checking Spotify auth: {e}")
+                result[0] = False
+                result[1] = f"Authentication error: {str(e)}"
+        thread = threading.Thread(target=check, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            return False, "Authentication check timeout"
+        return result[0], result[1]
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error checking Spotify auth: {e}")
         return False, f"Authentication error: {str(e)}"
 
-def get_spotify_client():
+def get_spotify_client(timeout=5):
     config = load_config()
     if not config["api_keys"]["client_id"] or not config["api_keys"]["client_secret"]:
         return None, "Missing client credentials"
     try:
-        sp_oauth = SpotifyOAuth(
-            client_id=config["api_keys"]["client_id"],
-            client_secret=config["api_keys"]["client_secret"],
-            redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
-            cache_path=".spotify_cache"
-        )
-        token_info = sp_oauth.get_cached_token()
-        if not token_info:
-            return None, "No valid token available"
-        if sp_oauth.is_token_expired(token_info):
-            logger = logging.getLogger('Launcher')
-            logger.info("Refreshing expired token...")
-            try:
-                token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
-                if not token_info:
-                    return None, "Failed to refresh token"
-            except Exception as e:
-                logger.error(f"Token refresh error: {e}")
-                return None, f"Token refresh failed: {str(e)}"
-        sp = spotipy.Spotify(auth=token_info['access_token'])
-        return sp, "Success"
+        from spotify_auth_manager import get_spotify_client as get_client
+        sp = get_client(timeout=timeout)
+        if sp:
+            return sp, "Success"
+        return None, "Failed to get Spotify client"
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"Error creating Spotify client: {e}")
         return None, f"Client creation failed: {str(e)}"
 
-def safe_check_spotify_auth():
-    if not check_internet_connection(timeout=3):
+def safe_check_spotify_auth(timeout=3):
+    if not check_internet_connection(timeout=2):
         return False, "No internet connection"
-    return check_spotify_auth()
+    return check_spotify_auth(timeout=timeout)
+
 
 # ============== PROCESS MANAGEMENT FUNCTIONS ==============
 
