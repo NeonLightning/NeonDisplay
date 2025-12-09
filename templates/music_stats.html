@@ -338,9 +338,9 @@
                     <div class="bar-chart" id="songChart">
                         {% for label, count, color in song_chart_items %}
                         <div class="bar-item">
-                            <div class="song-name" title="{{ label }}">{{ loop.index }}. {{ label.split(' - ')[0] if ' - ' in label else label }}</div>
-                            <div class="artist-name" title="{{ label.split(' - ')[1] if ' - ' in label else 'Unknown Artist' }}">
-                                {{ label.split(' - ')[1] if ' - ' in label else 'Unknown Artist' }}
+                            <div class="song-name" title="{{ label }}">{{ loop.index }}. {{ label.split(' -- ')[0] if ' -- ' in label else label }}</div>
+                            <div class="artist-name" title="{{ label.split(' -- ')[1] if ' -- ' in label else 'Unknown Artist' }}">
+                                {{ label.split(' -- ')[1] if ' -- ' in label else 'Unknown Artist' }}
                             </div>
                             <div class="bar-track-container">
                                 <div class="bar-track">
@@ -413,7 +413,7 @@
             showStatus('Please wait before queueing another track', 'error');
             return;
         }
-        const parts = songLabel.split(' - ');
+        const parts = songLabel.split(' -- ');
         const query = parts.length > 1 ? `${parts[0]} ${parts[1]}` : songLabel;
         showStatus(`Searching for "${query}"...`, 'info');
         fetch('/spotify_search', {
@@ -442,7 +442,7 @@
             showStatus('Please wait before playing another track', 'error');
             return;
         }
-        const parts = songLabel.split(' - ');
+        const parts = songLabel.split(' -- ');
         const query = parts.length > 1 ? `${parts[0]} ${parts[1]}` : songLabel;
         showStatus(`Searching for "${query}"...`, 'info');
         fetch('/spotify_search', {
@@ -530,9 +530,24 @@
     }
     function clearSongLogs() {
         if (confirm('Are you sure you want to clear all song history? This cannot be undone.')) {
+            console.log('Clearing song logs...');
             fetch('/clear_song_logs', { method: 'POST' })
-                .then(() => {
-                    location.reload();
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    if (data.success) {
+                        showStatus('Song logs cleared successfully!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showStatus('Error clearing logs: ' + data.error, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.log('Error caught:', error);
+                    showStatus('Error: ' + error, 'error');
                 });
         }
     }
@@ -559,7 +574,7 @@
             const maxCount = songItems[0][1];
             songItems.forEach((item, index) => {
                 const [label, count, color] = item;
-                const parts = label.split(' - ');
+                const parts = label.split(' -- ');
                 const song = parts[0] || label;
                 const artist = parts[1] || 'Unknown Artist';
                 const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
@@ -615,28 +630,7 @@
         document.getElementById('uniqueSongs').textContent = data.unique_songs;
         document.getElementById('uniqueArtists').textContent = data.unique_artists;
     }
-    function setupCurrentTrackSSE() {
-        const eventSource = new EventSource('/stream/current_track');
-        eventSource.onmessage = function(event) {
-            const trackData = JSON.parse(event.data);
-            updateCurrentTrackDisplay(trackData);
-        };
-        eventSource.onerror = function(event) {
-            console.error('Current track SSE error:', event);
-            setTimeout(setupCurrentTrackSSE, 5000);
-        };
-        return eventSource;
-    }
     document.addEventListener('DOMContentLoaded', function() {
-        setupCurrentTrackSSE();
-        fetch('/api/current_track')
-            .then(response => response.json())
-            .then(data => {
-                updateCurrentTrackDisplay(data.track);
-            })
-            .catch(error => {
-                console.error('Error fetching initial track:', error);
-            });
         document.querySelector('input[name="lines"]').addEventListener('change', refreshStats);
         document.querySelector('form').addEventListener('submit', function(e) {
             e.preventDefault();

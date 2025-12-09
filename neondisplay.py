@@ -1528,16 +1528,17 @@ def clear_logs():
 @app.route('/clear_song_logs', methods=['POST'])
 def clear_song_logs():
     try:
-        functions_with_conn = [update_song_count, load_song_counts, generate_music_stats]
-        for func in functions_with_conn:
-            if hasattr(func, 'db_conn'):
-                cursor = func.db_conn.cursor()
-                cursor.execute('DELETE FROM song_plays')
-                cursor.execute('VACUUM')
-                func.db_conn.commit()
-        return 'Song logs cleared', 200
+        conn = sqlite3.connect('song_stats.db')
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM song_plays')
+        conn.commit()
+        conn.close()
+        conn = sqlite3.connect('song_stats.db')
+        conn.execute('VACUUM')
+        conn.close()
+        return jsonify({'success': True, 'message': 'Song logs cleared'}), 200
     except Exception as e:
-        return f'Error clearing song logs: {str(e)}', 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/music_stats')
 def music_stats():
@@ -2436,13 +2437,28 @@ song_db_conn = init_song_database()
 
 def backup_db_if_needed():
     try:
-        backup_file = 'song_stats.db.backup'
-        if not os.path.exists(backup_file) or \
-            (time.time() - os.path.getmtime(backup_file)) > 1800:
-            if os.path.exists('song_stats.db'):
-                shutil.copy2('song_stats.db', backup_file)
-                logger = logging.getLogger('Launcher')
-                logger.info(f"✅ Database backed up to {backup_file}")
+        MAX_BACKUPS = 3
+        BACKUP_INTERVAL = 1200
+        backup_1 = 'song_stats.db.backup.1'
+        should_backup = False
+        if not os.path.exists(backup_1):
+            should_backup = True
+        elif (time.time() - os.path.getmtime(backup_1)) > BACKUP_INTERVAL:
+            should_backup = True
+        if should_backup and os.path.exists('song_stats.db'):
+            logger = logging.getLogger('Launcher')
+            backup_3 = 'song_stats.db.backup.3'
+            backup_2 = 'song_stats.db.backup.2'
+            if os.path.exists(backup_3):
+                os.remove(backup_3)
+            if os.path.exists(backup_2):
+                shutil.move(backup_2, backup_3)
+                logger.info(f"🔄 Rotated backup.2 -> backup.3")
+            if os.path.exists(backup_1):
+                shutil.move(backup_1, backup_2)
+                logger.info(f"🔄 Rotated backup.1 -> backup.2")
+            shutil.copy2('song_stats.db', backup_1)
+            logger.info(f"✅ Database backed up to {backup_1}")
     except Exception as e:
         logger = logging.getLogger('Launcher')
         logger.error(f"❌ Database backup failed: {e}")
@@ -2512,8 +2528,6 @@ def log_current_track_state():
             artists_list = [str(artist).strip() for artist in artists_data if artist and str(artist).strip()]
         elif isinstance(artists_data, str) and artists_data.strip():
             artists_list = [artist.strip() for artist in artists_data.split(',') if artist.strip()]
-        else:
-            artists_list = ['Unknown Artist']
         if not artists_list:
             artists_list = ['Unknown Artist']
         artist_str = ', '.join(artists_list)
@@ -2522,6 +2536,7 @@ def log_current_track_state():
             return
         song_info = {
             'song': track_data.get('title', ''),
+            'artist': artist_str,
             'artists': artists_list,
             'full_track': current_song
         }

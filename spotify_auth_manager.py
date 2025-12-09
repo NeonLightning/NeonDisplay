@@ -175,9 +175,9 @@ class SpotifyAuthManager:
             time_left = expires_at - time.time()
             if time_left < 0:
                 return "expired", f"Token expired {abs(time_left)/60:.0f} minutes ago"
-            elif time_left < 300:  # 5 minutes
+            elif time_left < 300:
                 return "critical", f"Token expires in {time_left/60:.1f} minutes"
-            elif time_left < 3600:  # 1 hour
+            elif time_left < 3600:
                 return "warning", f"Token expires in {time_left/60:.0f} minutes"
             else:
                 return "healthy", f"Token valid for {time_left/3600:.1f} hours"

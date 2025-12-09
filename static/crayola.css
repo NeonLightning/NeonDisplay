@@ -1,0 +1,171 @@
+@font-face {
+    font-family: 'Ldfcomicsanslight';
+    src: url('/static/font/Ldfcomicsanslight.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ldfcomicsansbold';
+    src: url('/static/font/Ldfcomicsansbold.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    /* ===== FONTS ===== */
+    --font-primary: 'Ldfcomicsanslight', 'Comic Sans MS', cursive;
+    --font-bold: 'Ldfcomicsansbold', 'Comic Sans MS', cursive;
+
+    /* ===== BASE COLORS (Crayola inspired - DARK MODE) ===== */
+    --color-bg-base: #1a0a2e;
+    --color-bg-elevated: #16213e;
+    --color-bg-overlay: #0f3460;
+    --color-text-primary: #FFD700;
+    --color-text-secondary: #FF1493;
+    --color-text-tertiary: #00FFFF;
+    --color-border-default: #FF1493;
+    --color-border-subtle: #7C2D8E;
+    --color-border-strong: #FF00FF;
+
+    /* ===== INTERACTIVE COLORS ===== */
+    --color-primary: #FF1493;
+    --color-primary-hover: #FF69B4;
+    --color-primary-active: #C71585;
+    --color-primary-text: #FFFFFF;
+    --color-secondary: #9370DB;
+    --color-secondary-hover: #BA55D3;
+    --color-secondary-active: #8A2BE2;
+    --color-secondary-text: #FFFFFF;
+
+    /* ===== STATUS COLORS ===== */
+    --color-success: #00FF7F;
+    --color-success-bg: #0d3d29;
+    --color-success-border: #00FF7F;
+    --color-success-text: #7FFFD4;
+    --color-error: #FF1493;
+    --color-error-bg: #3d0d29;
+    --color-error-border: #FF1493;
+    --color-error-text: #FFB6C1;
+    --color-warning: #FFA500;
+    --color-warning-bg: #3d2d0d;
+    --color-warning-border: #FFD700;
+    --color-warning-text: #FFD700;
+    --color-info: #00CED1;
+    --color-info-bg: #0d2d3d;
+    --color-info-border: #00FFFF;
+    --color-info-text: #7FFFD4;
+
+    /* ===== COMPONENT-SPECIFIC ===== */
+    --color-card-bg: #16213e;
+    --color-card-border: #FF1493;
+    --color-log-bg: #0a0a0a;
+    --color-log-text: #00FFFF;
+    --color-input-bg: #0f3460;
+    --color-input-border: #FF1493;
+    --color-input-text: #FFD700;
+    --color-input-placeholder: #9370DB;
+
+    /* ===== LEGACY MAPPINGS (backwards compatibility) ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: var(--color-text-primary);
+    --text-on-light: #000000;
+    --text-secondary-on-dark: var(--color-text-secondary);
+}
+
+[data-theme="light"] {
+    /* ===== BASE COLORS (Bright Crayola Light) ===== */
+    --color-bg-base: #FFD700;
+    --color-bg-elevated: #FF69B4;
+    --color-bg-overlay: #FFA500;
+    --color-text-primary: #0000CD;
+    --color-text-secondary: #8B008B;
+    --color-text-tertiary: #DC143C;
+    --color-border-default: #0000CD;
+    --color-border-subtle: #9370DB;
+    --color-border-strong: #00008B;
+
+    /* ===== INTERACTIVE COLORS ===== */
+    --color-primary: #FF1493;
+    --color-primary-hover: #FF00FF;
+    --color-primary-active: #C71585;
+    --color-primary-text: #FFFFFF;
+    --color-secondary: #32CD32;
+    --color-secondary-hover: #00FF00;
+    --color-secondary-active: #228B22;
+    --color-secondary-text: #FFFFFF;
+
+    /* ===== STATUS COLORS ===== */
+    --color-success: #00FF00;
+    --color-success-bg: #98FB98;
+    --color-success-border: #008000;
+    --color-success-text: #006400;
+    --color-error: #FF0000;
+    --color-error-bg: #FFB6C1;
+    --color-error-border: #8B0000;
+    --color-error-text: #8B0000;
+    --color-warning: #FF8C00;
+    --color-warning-bg: #FFFFE0;
+    --color-warning-border: #FF4500;
+    --color-warning-text: #B8860B;
+    --color-info: #00BFFF;
+    --color-info-bg: #E0FFFF;
+    --color-info-border: #0000CD;
+    --color-info-text: #00008B;
+
+    /* ===== COMPONENT-SPECIFIC ===== */
+    --color-card-bg: #FF69B4;
+    --color-card-border: #0000CD;
+    --color-log-bg: #FFD700;
+    --color-log-text: #0000CD;
+    --color-input-bg: #FFFFFF;
+    --color-input-border: #FF1493;
+    --color-input-text: #0000CD;
+    --color-input-placeholder: #8B008B;
+
+    /* ===== LEGACY MAPPINGS ===== */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-elevated);
+    --bg-tertiary: var(--color-bg-overlay);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --accent-color: var(--color-primary);
+    --accent-hover: var(--color-primary-hover);
+    --border-color: var(--color-border-default);
+    --success-bg: var(--color-success-bg);
+    --success-border: var(--color-success-border);
+    --success-color: var(--color-success-text);
+    --error-bg: var(--color-error-bg);
+    --error-border: var(--color-error-border);
+    --warning-bg: var(--color-warning-bg);
+    --warning-border: var(--color-warning-border);
+    --warning-color: var(--color-warning-text);
+    --info-bg: var(--color-info-bg);
+    --info-border: var(--color-info-border);
+    --card-bg: var(--color-card-bg);
+    --log-bg: var(--color-log-bg);
+    --text-on-dark: #FFFFFF;
+    --text-on-light: var(--color-text-primary);
+    --text-secondary-on-dark: var(--color-text-secondary);
+}

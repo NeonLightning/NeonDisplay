@@ -18,36 +18,36 @@
     --font-primary: 'MatrixUnivga', monospace;
     --font-bold: 'MatrixUnivgaBold', monospace;
 
-    /* ===== BASE COLORS (from irssi theme) ===== */
+    /* ===== BASE COLORS (teal theme) ===== */
     --color-bg-base: #000000;
     --color-bg-elevated: #1a1a1a;
     --color-bg-overlay: #0d0d0d;
-    --color-text-primary: #00ff00;
-    --color-text-secondary: #00aa00;
-    --color-text-tertiary: #007700;
+    --color-text-primary: #00ffff;
+    --color-text-secondary: #00aaaa;
+    --color-text-tertiary: #008888;
     --color-text-red: #ff0000;
     --color-text-red-dim: #aa0000;
     --color-text-white: #ffffff;
     --color-text-grey: #808080;
-    --color-border-default: #00aa00;
-    --color-border-subtle: #003300;
-    --color-border-strong: #00ff00;
+    --color-border-default: #00aaaa;
+    --color-border-subtle: #003333;
+    --color-border-strong: #00ffff;
 
     /* ===== INTERACTIVE COLORS ===== */
-    --color-primary: #00ff00;
-    --color-primary-hover: #00cc00;
-    --color-primary-active: #00aa00;
+    --color-primary: #00ffff;
+    --color-primary-hover: #00cccc;
+    --color-primary-active: #008888;
     --color-primary-text: #000000;
     --color-secondary: #1a1a1a;
     --color-secondary-hover: #2a2a2a;
     --color-secondary-active: #0d0d0d;
-    --color-secondary-text: #00aa00;
+    --color-secondary-text: #00aaaa;
 
     /* ===== STATUS COLORS ===== */
-    --color-success: #00ff00;
-    --color-success-bg: #001a00;
-    --color-success-border: #00ff00;
-    --color-success-text: #007700;
+    --color-success: #00ffff;
+    --color-success-bg: #001a1a;
+    --color-success-border: #00ffff;
+    --color-success-text: #008888;
     --color-error: #ff0000;
     --color-error-bg: #1a0000;
     --color-error-border: #ff0000;
@@ -63,13 +63,13 @@
 
     /* ===== COMPONENT-SPECIFIC ===== */
     --color-card-bg: #1a1a1a;
-    --color-card-border: #00aa00;
+    --color-card-border: #00aaaa;
     --color-log-bg: #000000;
-    --color-log-text: #00ff00;
+    --color-log-text: #00ffff;
     --color-input-bg: #0d0d0d;
-    --color-input-border: #00aa00;
-    --color-input-text: #00ff00;
-    --color-input-placeholder: #007700;
+    --color-input-border: #00aaaa;
+    --color-input-text: #00ffff;
+    --color-input-placeholder: #008888;
 
     /* ===== BORDER SETTINGS ===== */
     --border-width: 2px;
@@ -103,35 +103,35 @@
 }
 [data-theme="light"] {
     /* ===== BASE COLORS ===== */
-    --color-bg-base: #00ff00;
+    --color-bg-base: #00ffff;
     --color-bg-elevated: #ffffff;
-    --color-bg-overlay: #ccffcc;
+    --color-bg-overlay: #ccffff;
     --color-text-primary: #000000;
-    --color-text-secondary: #003b00;
-    --color-text-tertiary: #00721c;
+    --color-text-secondary: #003333;
+    --color-text-tertiary: #006666;
     --color-text-red: #cc0000;
     --color-text-red-dim: #880000;
     --color-text-white: #000000;
     --color-text-grey: #404040;
-    --color-border-default: #003b00;
-    --color-border-subtle: #99cc99;
+    --color-border-default: #003333;
+    --color-border-subtle: #99cccc;
     --color-border-strong: #000000;
 
     /* ===== INTERACTIVE COLORS ===== */
-    --color-primary: #003b00;
-    --color-primary-hover: #001a00;
-    --color-primary-active: #000f00;
-    --color-primary-text: #00ff00;
+    --color-primary: #003333;
+    --color-primary-hover: #001a1a;
+    --color-primary-active: #000f0f;
+    --color-primary-text: #00ffff;
     --color-secondary: #ffffff;
-    --color-secondary-hover: #e6ffe6;
-    --color-secondary-active: #ccffcc;
-    --color-secondary-text: #003b00;
+    --color-secondary-hover: #e6ffff;
+    --color-secondary-active: #ccffff;
+    --color-secondary-text: #003333;
 
     /* ===== STATUS COLORS ===== */
-    --color-success: #003b00;
-    --color-success-bg: #ccffcc;
-    --color-success-border: #003b00;
-    --color-success-text: #006600;
+    --color-success: #003333;
+    --color-success-bg: #ccffff;
+    --color-success-border: #003333;
+    --color-success-text: #006666;
     --color-error: #cc0000;
     --color-error-bg: #ffcccc;
     --color-error-border: #cc0000;
@@ -141,19 +141,19 @@
     --color-warning-border: #cc9900;
     --color-warning-text: #664d00;
     --color-info: #0066aa;
-    --color-info-bg: #cceeff;
+    --color-info-bg: #ccffff;
     --color-info-border: #0066aa;
     --color-info-text: #003355;
 
     /* ===== COMPONENT-SPECIFIC ===== */
     --color-card-bg: #ffffff;
-    --color-card-border: #003b00;
-    --color-log-bg: #00ff00;
+    --color-card-border: #003333;
+    --color-log-bg: #00ffff;
     --color-log-text: #000000;
     --color-input-bg: #ffffff;
-    --color-input-border: #003b00;
+    --color-input-border: #003333;
     --color-input-text: #000000;
-    --color-input-placeholder: #003b00;
+    --color-input-placeholder: #003333;
 
     /* ===== LEGACY MAPPINGS ===== */
     --bg-primary: var(--color-bg-base);
@@ -345,6 +345,7 @@ button:disabled,
 
 input[type="text"],
 input[type="password"],
+input[type="email"],
 input[type="search"],
 input[type="number"],
 textarea,
