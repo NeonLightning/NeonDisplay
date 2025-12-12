@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from flask import Flask, request, redirect, url_for, flash, Response, render_template, send_file, jsonify
 from spotipy.oauth2 import SpotifyOAuth
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import Counter
 from functools import wraps
 from logging.handlers import RotatingFileHandler
@@ -1846,7 +1846,7 @@ def _build_api_status(state, message):
     return {
         "state": state,
         "message": message,
-        "checked_at": datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        "checked_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
     }
 
 
