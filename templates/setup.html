@@ -470,6 +470,12 @@
                                 <div id="trackArtist" class="track-artist"></div>
                                 <div id="trackAlbum" class="track-album"></div>
                             </div>
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                                <div id="trackStatus" class="track-status"></div>
+                                <button id="likeButton" onclick="toggleLikeTrack()" style="padding: 5px 10px; font-size: 14px; width: auto; margin: 0; border-radius: 20px;" class="btn-secondary" title="Like/Unlike track">
+                                    ❤️
+                                </button>
+                            </div>
                             <div id="trackStatus" class="track-status"></div>
                         </div>
                         <div style="margin-top: 15px;">
@@ -591,6 +597,8 @@
     let lastLyricsFetch = 0;
     const LYRICS_COOLDOWN = 1000;
     let spotifyInitialized = false;
+    let currentTrackId = '';
+    let currentIsLiked = false;
     function autoDismissMessages() {
         const messages = document.querySelectorAll('.status.success, .status.error, .status.info, .status.warning');
         messages.forEach(message => {
@@ -850,10 +858,101 @@
         }
         updateControlButtonsFromTrack(trackData);
     }
+    function updateLikeButton(isLiked) {
+        const likeButton = document.getElementById('likeButton');
+        if (likeButton) {
+            currentIsLiked = isLiked;
+            likeButton.innerHTML = isLiked ? '💚' : '🤍';
+            likeButton.title = isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs';
+        }
+    }
+    function toggleLikeTrack() {
+        console.log('Toggle like track called');
+        console.log('Current track ID:', currentTrackId);
+        console.log('Current is liked:', currentIsLiked);
+        if (!currentTrackId) {
+            console.error('No track ID available');
+            const statusDiv = document.getElementById('spotifyControlStatus');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'No track ID available. Cannot like/unlike.';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+            return;
+        }
+        if (!canMakeRequest('like')) {
+            console.log('Rate limited, please wait');
+            return;
+        }
+        const statusDiv = document.getElementById('spotifyControlStatus');
+        const endpoint = currentIsLiked ? '/spotify_unlike_track' : '/spotify_like_track';
+        const action = currentIsLiked ? 'Removing from' : 'Adding to';
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status info';
+            statusDiv.textContent = `${action} Liked Songs...`;
+        }
+        console.log('Making request to:', endpoint);
+        console.log('With track ID:', currentTrackId);
+        fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ track_id: currentTrackId })
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            if (data.success) {
+                currentIsLiked = !currentIsLiked;
+                updateLikeButton(currentIsLiked);
+                if (statusDiv) {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = data.message;
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 2000);
+                }
+            } else {
+                console.error('API error:', data.error);
+                if (statusDiv) {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Network error:', error);
+            if (statusDiv) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Network error: ' + error.message;
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            }
+        })
+        .finally(() => {
+            completeRequest();
+        });
+    }
     function updateCurrentTrackDisplay(trackData) {
         const now = Date.now();
         if (trackData.has_track && trackData.song && trackData.song !== 'No track playing') {
             updateTrackInfo(trackData);
+            currentTrackId = trackData.track_id || '';
+            currentIsLiked = trackData.is_liked || false;
+            updateLikeButton(currentIsLiked);
             const trackIdentifier = trackData.song + '|' + trackData.artist;
             if (trackIdentifier !== currentTrackForArt) {
                 currentTrackForArt = trackIdentifier;
@@ -870,6 +969,8 @@
         } else {
             currentTrackForArt = '';
             currentLyricsTrack = '';
+            currentTrackId = '';
+            currentIsLiked = false;
             updateNoTrackDisplay();
             if (lyricsDropdownOpen) {
                 const lyricsContent = document.getElementById('lyricsContent');

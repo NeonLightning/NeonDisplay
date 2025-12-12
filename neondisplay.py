@@ -676,7 +676,7 @@ def spotify_auth_page():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private user-library-read user-library-modify",
             cache_path=".spotify_cache",
             show_dialog=True
         )
@@ -709,7 +709,7 @@ def process_callback_url():
             client_id=config["api_keys"]["client_id"],
             client_secret=config["api_keys"]["client_secret"],
             redirect_uri=config["api_keys"]["redirect_uri"],
-            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private",
+            scope="user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private user-library-read user-library-modify",
             cache_path=".spotify_cache"
         )
         token_info = sp_oauth.get_access_token(code, as_dict=False)
@@ -954,6 +954,23 @@ def spotify_generate_from_input():
         logger.error(f"Error generating playlist from input: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Error: {str(e)}'})
 
+@app.route('/spotify_like_track', methods=['POST'])
+@rate_limit(1.0)
+def spotify_like_track():
+    try:
+        track_id = request.json.get('track_id', '').strip()
+        if not track_id:
+            return jsonify({'success': False, 'error': 'No track ID provided'})
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        sp.current_user_saved_tracks_add([track_id])
+        return jsonify({'success': True, 'message': 'Track added to Liked Songs'})
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error liking track: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/spotify_next', methods=['POST'])
 @rate_limit(0.5)
 def spotify_next():
@@ -1143,6 +1160,23 @@ def spotify_shuffle_toggle():
     except Exception as e:
         logger.error(f"Shuffle toggle error: {e}")
         return {"success": False, "error": str(e)}
+
+@app.route('/spotify_unlike_track', methods=['POST'])
+@rate_limit(1.0)
+def spotify_unlike_track():
+    try:
+        track_id = request.json.get('track_id', '').strip()
+        if not track_id:
+            return jsonify({'success': False, 'error': 'No track ID provided'})
+        sp, message = get_spotify_client()
+        if not sp:
+            return jsonify({'success': False, 'error': message})
+        sp.current_user_saved_tracks_delete([track_id])
+        return jsonify({'success': True, 'message': 'Track removed from Liked Songs'})
+    except Exception as e:
+        logger = logging.getLogger('Launcher')
+        logger.error(f"Error unliking track: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/spotify_volume', methods=['POST'])
 @rate_limit(0.5)
@@ -1473,11 +1507,12 @@ def api_current_weather():
 @app.route('/api/current_track')
 def api_current_track():
     current_track = get_current_track()
+    logger = logging.getLogger('Launcher')
+    logger.debug(f"API returning track: {current_track.get('song')}, track_id: {current_track.get('track_id')}, is_liked: {current_track.get('is_liked')}")
     return {
         'track': current_track,
         'timestamp': datetime.now().isoformat()
     }
-
 # ============== LOG AND STATS ROUTES ==============
 
 @app.route('/clear_logs', methods=['POST'])
@@ -1757,6 +1792,8 @@ def stream_current_track():
                 'duration': current_track['duration'],
                 'is_playing': current_track['is_playing'],
                 'has_track': current_track['has_track'],
+                'track_id': current_track.get('track_id', ''),
+                'is_liked': current_track.get('is_liked', False),
                 'timestamp': datetime.now().isoformat()
             }
             update_counter += 1
@@ -2328,13 +2365,18 @@ def get_current_track():
                 'progress': '0:00',
                 'duration': '0:00',
                 'is_playing': False,
-                'has_track': False
+                'has_track': False,
+                'track_id': '',
+                'is_liked': False
             }
         state_file = '.current_track_state.toml'
         if os.path.exists(state_file):
             state_data = toml.load(state_file)
             track_data = state_data.get('current_track', {})
             timestamp = track_data.get('timestamp', 0)
+            logger = logging.getLogger('Launcher')
+            logger.debug(f"Track data keys: {list(track_data.keys())}")
+            logger.debug(f"Track data: {track_data}")
             if time.time() - timestamp < 60:
                 progress_sec = track_data.get('current_position', 0)
                 duration_sec = track_data.get('duration', 0)
@@ -2347,6 +2389,9 @@ def get_current_track():
                     artists_str = ', '.join(artists)
                 else:
                     artists_str = artists
+                track_id = track_data.get('track_id', '')
+                is_liked = track_data.get('is_liked', False)
+                logger.debug(f"Extracted track_id: {track_id}, is_liked: {is_liked}")
                 return {
                     'song': track_data.get('title', 'Unknown Track'),
                     'artist': artists_str,
@@ -2354,7 +2399,11 @@ def get_current_track():
                     'progress': f"{progress_min}:{progress_sec:02d}",
                     'duration': f"{duration_min}:{duration_sec:02d}",
                     'is_playing': track_data.get('is_playing', False),
-                    'has_track': track_data.get('title') != 'No track playing'
+                    'has_track': track_data.get('title') != 'No track playing',
+                    'track_id': track_data.get('track_id', ''),
+                    'is_liked': track_data.get('is_liked', False),
+                    'track_id': track_data.get('track_id', ''),
+                    'is_liked': track_data.get('is_liked', False)
                 }
         return {
             'song': 'No track playing',
@@ -2363,7 +2412,9 @@ def get_current_track():
             'progress': '0:00',
             'duration': '0:00',
             'is_playing': False,
-            'has_track': False
+            'has_track': False,
+            'track_id': '',
+            'is_liked': False
         }
     except Exception as e:
         logger = logging.getLogger('Launcher')
@@ -2375,7 +2426,9 @@ def get_current_track():
             'progress': '0:00',
             'duration': '0:00',
             'is_playing': False,
-            'has_track': False
+            'has_track': False,
+            'track_id': '',
+            'is_liked': False
         }
 
 def clear_track_state_file():

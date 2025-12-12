@@ -13,7 +13,7 @@ SCREEN_WIDTH = 480
 SCREEN_HEIGHT = 320
 UPDATE_INTERVAL_WEATHER = 3600
 GEO_UPDATE_INTERVAL = 3600
-SCOPE = "user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private"
+SCOPE = "user-read-currently-playing user-modify-playback-state user-read-playback-state playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative user-read-private user-library-read user-library-modify"
 USE_GPSD = True
 USE_GOOGLE_GEO = True
 SCREEN_AREA = SCREEN_WIDTH * SCREEN_HEIGHT
@@ -2104,8 +2104,20 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
     if track['item'].get('album') and track['item']['album'].get('images'):
         art_url = track['item']['album']['images'][0]['url']
     art_changed = art_url != last_art_url
+    track_id = track['item'].get('id')
+    is_liked = False
+    if track_id:
+        try:
+            from spotify_auth_manager import get_spotify_client
+            sp = get_spotify_client(timeout=3)
+            if sp:
+                is_liked_result = sp.current_user_saved_tracks_contains([track_id])
+                is_liked = is_liked_result[0] if is_liked_result else False
+        except Exception as e:
+            print(f"Error checking liked status: {e}")
     if track_changed or art_changed or spotify_track is None:
         spotify_track = new_track
+        spotify_track['is_liked'] = is_liked
         update_activity()
         if current_time - last_successful_write >= write_interval:
             write_current_track_state(spotify_track)
@@ -2119,7 +2131,8 @@ def handle_track_update(current_time, last_successful_write, write_interval, tra
         old_playing_state = spotify_track.get('is_playing', False) if spotify_track else False
         spotify_track['current_position'] = new_track['current_position']
         spotify_track['is_playing'] = new_track['is_playing']
-        spotify_track['shuffle_state'] = new_track['shuffle_state']        
+        spotify_track['shuffle_state'] = new_track['shuffle_state']
+        spotify_track['is_liked'] = is_liked
         playing_state_changed = new_track['is_playing'] != old_playing_state
         if playing_state_changed and new_track['is_playing']:
             update_activity()
@@ -2312,7 +2325,9 @@ def write_current_track_state(track_data, queue_data=None, raw_track_data=None):
                     'shuffle_state': bool(track_data.get('shuffle_state', False)),
                     'volume_percent': int(volume),
                     'device_name': device_name,
-                    'device_active': bool(device_active)
+                    'device_active': bool(device_active),
+                    'track_id': track_data.get('track_id', ''),
+                    'is_liked': bool(track_data.get('is_liked', False))
                 }
                 state_data['device_status'] = {
                     'has_active_device': bool(device_active),
